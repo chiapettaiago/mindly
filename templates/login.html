@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="auth-card">
+    <h2>🧠 Entre no Mindly</h2>
+    <form method="post" novalidate>
+      {{ form.hidden_tag() }}
+
+      <div class="input-group">
+        <span class="input-icon" aria-hidden>📧</span>
+        {{ form.email(class_='input', placeholder='Email', aria_label='Email') }}
+      </div>
+
+      <div class="input-group">
+        <span class="input-icon" aria-hidden>🔒</span>
+        {{ form.password(class_='input', placeholder='Senha', aria_label='Senha') }}
+      </div>
+
+      <div class="form-row small" style="justify-content:space-between;align-items:center">
+        <label class="checkbox-inline">{{ form.remember() }} Manter conectado neste dispositivo</label>
+        <a class="muted" href="#">Esqueci a senha</a>
+      </div>
+
+      <div style="margin-top:14px">
+        {{ form.submit(class_='primary block') }}
+      </div>
+    </form>
+
+    <p class="muted" style="margin-top:12px">Não tem conta? <a href="{{ url_for('register') }}">Cadastre-se</a></p>
+  </div>
+{% endblock %}

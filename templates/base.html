@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Mindly</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body data-endpoint="{{ request.endpoint }}">
+    {% if request.endpoint not in ['login', 'register'] %}
+    <!-- Sidebar para desktop -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Expandir/Recolher menu">
+          <span class="hamburger"></span>
+        </button>
+        <div class="sidebar-title">
+          <span class="logo">🧠</span>
+          <span class="title-text">Mindly</span>
+        </div>
+        <!-- botão de tema removido -->
+      </div>
+      
+      <nav class="sidebar-nav">
+        {% if current_user.is_authenticated %}
+        <a href="{{ url_for('index') }}" class="nav-item {{ 'active' if request.endpoint == 'index' else '' }}">
+          <span class="nav-icon">🏠</span>
+          <span class="nav-text">Lembretes</span>
+        </a>
+        <a href="#" class="nav-item nav-subitem" onclick="showModal('createReminderModal')">
+          <span class="nav-icon">➕</span>
+          <span class="nav-text">Novo lembrete</span>
+        </a>
+        <a href="{{ url_for('notes') }}" class="nav-item {{ 'active' if request.endpoint == 'notes' else '' }}">
+          <span class="nav-icon">🗒️</span>
+          <span class="nav-text">Notas</span>
+        </a>
+        <a href="#" class="nav-item nav-subitem" onclick="showModal('createNoteModal')">
+          <span class="nav-icon">➕</span>
+          <span class="nav-text">Nova nota</span>
+        </a>
+        <div class="nav-divider"></div>
+        <a href="#" class="nav-item user-info" onclick="openPreferences()" title="Preferências">
+          <span class="nav-icon">👤</span>
+          <span class="nav-text">{{ current_user.name }}</span>
+        </a>
+        <a href="{{ url_for('logout') }}" class="nav-item logout">
+          <span class="nav-icon">🚪</span>
+          <span class="nav-text">Sair</span>
+        </a>
+        {% endif %}
+      </nav>
+    </aside>
+
+    <!-- Bottom navigation para mobile -->
+    <nav class="bottom-nav">
+      {% if current_user.is_authenticated %}
+      <a href="{{ url_for('index') }}" class="bottom-nav-item {{ 'active' if request.endpoint == 'index' else '' }}">
+        <span class="bottom-nav-icon">🏠</span>
+        <span class="bottom-nav-text">Lembretes</span>
+      </a>
+      <a href="#" class="bottom-nav-item" onclick="showModal('newItemModal')">
+        <span class="bottom-nav-icon create-icon">➕</span>
+        <span class="bottom-nav-text">Novo</span>
+      </a>
+      <a href="{{ url_for('notes') }}" class="bottom-nav-item {{ 'active' if request.endpoint == 'notes' else '' }}">
+        <span class="bottom-nav-icon">🗒️</span>
+        <span class="bottom-nav-text">Notas</span>
+      </a>
+      <a href="#" id="profileMobile" class="bottom-nav-item" onclick="openPreferences()" title="Perfil e Preferências">
+        <span class="bottom-nav-icon">👤</span>
+        <span class="bottom-nav-text">Perfil</span>
+      </a>
+      {% endif %}
+    </nav>
+    {% endif %}
+
+    <main class="main-content" id="mainContent">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="messages" id="toastContainer">
+            {% for category, msg in messages %}
+              <div class="flash {{ category }}" role="status" aria-live="polite">
+                <div class="toast-content">{{ msg }}</div>
+                <button class="toast-close" aria-label="Fechar" onclick="this.parentElement.classList.add('hiding'); setTimeout(() => this.parentElement.remove(), 200);">✕</button>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="messages" id="toastContainer"></div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- Modal de Preferências -->
+    <div id="preferencesModal" class="modal" style="display:none">
+      <div class="modal-content create-modal prefs-modal">
+        <div class="prefs-header">
+          <div class="prefs-icon">⚙️</div>
+          <div>
+            <h3>Preferências</h3>
+            <p class="prefs-subtitle">Personalize aparência e alertas do aplicativo</p>
+          </div>
+        </div>
+
+        <div class="prefs-section">
+          <div class="prefs-section-title">Tema</div>
+          <div class="segmented">
+            <label class="seg"><input type="radio" name="themePref" id="themePrefSystem" value="system"><span class="seg-ui">🖥️ Sistema</span></label>
+            <label class="seg"><input type="radio" name="themePref" id="themePrefLight" value="light"><span class="seg-ui">☀️ Claro</span></label>
+            <label class="seg"><input type="radio" name="themePref" id="themePrefDark" value="dark"><span class="seg-ui">🌙 Escuro</span></label>
+          </div>
+        </div>
+
+        <div class="prefs-grid">
+          <div class="prefs-section">
+            <div class="prefs-section-title">Interface</div>
+            <div class="muted" style="margin-bottom:8px">Tamanho</div>
+            <div class="segmented">
+              <label class="seg"><input type="radio" name="fontScale" id="fontSmall" value="small"><span class="seg-ui">A- Pequeno</span></label>
+              <label class="seg"><input type="radio" name="fontScale" id="fontMedium" value="medium"><span class="seg-ui">A Padrão</span></label>
+              <label class="seg"><input type="radio" name="fontScale" id="fontLarge" value="large"><span class="seg-ui">A+ Grande</span></label>
+            </div>
+            <div class="muted" style="margin:12px 0 8px">Densidade da lista</div>
+            <div class="segmented">
+              <label class="seg"><input type="radio" name="listDensity" id="densityCompact" value="compact"><span class="seg-ui">Compacta</span></label>
+              <label class="seg"><input type="radio" name="listDensity" id="densityDefault" value="default"><span class="seg-ui">Padrão</span></label>
+              <label class="seg"><input type="radio" name="listDensity" id="densityComfortable" value="comfortable"><span class="seg-ui">Confortável</span></label>
+            </div>
+          </div>
+
+          <div class="prefs-section">
+            <div class="prefs-section-title">Notificações</div>
+            <label class="as-switch">
+              <input type="checkbox" id="notifyHighToast">
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-label">Mostrar alertas de alta urgência como toast</span>
+            </label>
+            <label class="as-switch">
+              <input type="checkbox" id="useSystemNotifications">
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-label">Usar notificações do sistema quando permitido</span>
+            </label>
+            <label class="as-switch">
+              <input type="checkbox" id="playSoundHigh">
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-label">Reproduzir som em alta urgência</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-actions prefs-actions">
+          <button class="danger" onclick="closeModal('preferencesModal')">Fechar</button>
+          <button class="primary" onclick="savePreferences()">Salvar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal seletor de criação (mobile) -->
+    <div id="newItemModal" class="modal" style="display:none">
+      <div class="modal-content create-modal" style="max-width:420px">
+        <h3>➕ Novo</h3>
+        <p class="muted" style="margin-bottom:16px">O que você deseja criar?</p>
+        <div class="modal-actions" style="flex-direction:column; gap:10px">
+          <button class="primary big-btn" onclick="goToCreate('reminder')">📝 Lembrete</button>
+          <button class="primary big-btn" onclick="goToCreate('note')">🗒️ Nota</button>
+          <button class="danger" type="button" onclick="closeModal('newItemModal')">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

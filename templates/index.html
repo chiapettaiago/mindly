@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block content %}
+  <!-- Modal para criar lembrete -->
+  <div id="createReminderModal" class="modal" style="display:none">
+    <div class="modal-content create-modal">
+      <h3>📝 Criar novo lembrete</h3>
+      <form method="post" action="{{ url_for('add_reminder') }}" aria-label="Adicionar lembrete">
+        {{ form.hidden_tag() }}
+        <div class="form-group">
+          <label class="label">📝 Título do lembrete</label>
+          {{ form.title(class_='large-input', placeholder='Ex: Tomar remédio às 9h, Reunião com cliente...') }}
+        </div>
+
+        <div class="form-group">
+          <label class="label">📄 Observações (opcional)</label>
+          {{ form.note(class_='large-input', rows=3, placeholder='Informações adicionais: local, pessoas envolvidas, preparativos...') }}
+        </div>
+
+        <div class="form-group">
+          <label class="label">📅 Prazo (opcional)</label>
+          {{ form.due(type='datetime-local', class_='large-input') }}
+        </div>
+
+        <div class="modal-actions">
+          {{ form.submit(class_='primary big-btn', value='➕ Criar lembrete') }}
+          <button type="button" class="danger" onclick="closeModal('createReminderModal')">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal para confirmação de exclusão -->
+  <div id="deleteModal" class="modal" style="display:none">
+    <div class="modal-content">
+      <h3>🗑️ Confirmar exclusão</h3>
+      <p>Tem certeza que deseja excluir este lembrete?</p>
+      <div class="modal-actions">
+        <button class="danger" id="confirmDelete">Sim, excluir</button>
+        <button class="primary" onclick="closeModal('deleteModal')">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal para notificações -->
+  <div id="notificationModal" class="modal" style="display:none">
+    <div class="modal-content notification-modal">
+      <h3>🔔 Lembrete!</h3>
+      <div id="notificationContent"></div>
+      <div class="modal-actions">
+        <button class="primary" onclick="closeModal('notificationModal')">Entendi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Badge de notificações -->
+  <div id="notificationBadge" class="notification-badge" style="display:none">
+    <span id="notificationCount">0</span>
+    <button onclick="showNotifications()">🔔</button>
+  </div>
+
+  <div class="page-header">
+    <h1>🧠 Seus lembretes</h1>
+    <p class="subtitle">Mantenha-se organizado com o Mindly</p>
+  </div>
+
+  <!-- Campo de busca para desktop -->
+  <section class="search-form desktop-only">
+    <form method="get" action="{{ url_for('index') }}" class="row" style="max-width:500px; margin:0 auto 24px">
+      <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="Buscar lembretes..." class="large-input"/>
+      <button class="primary">🔎 Buscar</button>
+    </form>
+  </section>
+
+  <section class="list">
+    {% for r in reminders %}
+    <div class="reminder {% if r.done %}done{% endif %}" aria-live="polite" data-title="{{ r.title|e }}" data-note="{{ r.note|e if r.note else '' }}" data-due="{{ r.due.strftime('%d/%m/%Y %H:%M') if r.due else '' }}">
+      <div class="left">
+        <form method="get" action="{{ url_for('toggle_done', id=r.id) }}" aria-label="Marcar como feito">
+          <button class="check big-check" aria-label="Marcar lembrete {{ r.title }} como feito">{% if r.done %}✓{% else %}○{% endif %}</button>
+        </form>
+      </div>
+      <div class="body">
+        <div class="title">{{ r.title }}</div>
+        {% if r.note %}<div class="note">{{ r.note }}</div>{% endif %}
+        <div class="meta">
+          <span>Criado: {{ r.created.strftime('%d/%m/%Y %H:%M') }}</span>
+          {% if r.due %}
+            <span class="due-badge" aria-label="Prazo">📅 {{ r.due.strftime('%d/%m/%Y %H:%M') }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" onclick="speakElement(this.closest('.reminder'))" aria-label="Ouvir lembrete {{ r.title }}">🔊 Ouvir</button>
+        <button class="danger" onclick="confirmDelete('{{ r.id }}')" aria-label="Excluir lembrete {{ r.title }}">🗑️ Excluir</button>
+      </div>
+    </div>
+    {% else %}
+      <div class="empty-state">
+        <h3>📝 Nenhum lembrete ainda</h3>
+        <p>Use o formulário acima para criar seu primeiro lembrete e manter sua agenda organizada!</p>
+      </div>
+    {% endfor %}
+  </section>
+{% endblock %}

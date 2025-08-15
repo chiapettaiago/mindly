@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block content %}
+  <!-- Modal para criar nota (mobile e também disponível no desktop) -->
+  <div id="createNoteModal" class="modal" style="display:none">
+    <div class="modal-content create-modal" style="max-width:560px">
+      <h3>🗒️ Criar nova nota</h3>
+      <form method="post" action="{{ url_for('notes') }}" aria-label="Adicionar nota">
+        {{ form.hidden_tag() }}
+        <div class="form-group">
+          <label class="label" for="noteModalInput">✍️ Conteúdo da nota</label>
+          {{ form.content(id='noteModalInput', class_='large-input', placeholder='Ex: Comprar pão, ligar para João às 15h...', maxlength='500') }}
+        </div>
+        <div class="modal-actions">
+          {{ form.submit(class_='primary big-btn', value='➕ Adicionar nota') }}
+          <button type="button" class="danger" onclick="closeModal('createNoteModal')">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="page-header">
+    <h1>🗒️ Notas rápidas</h1>
+    <p class="subtitle">Capture pensamentos com o Mindly</p>
+  </div>
+
+  <!-- Campo de busca separado para desktop -->
+  <section class="search-form desktop-only">
+    <form method="get" action="{{ url_for('notes') }}" class="row" style="max-width:500px; margin:0 auto 24px">
+      <input type="text" name="q" value="{{ q or '' }}" placeholder="Buscar notas..." class="large-input"/>
+      <button class="primary">🔎 Buscar</button>
+    </form>
+  </section>
+
+  <section class="list">
+    {% for n in notes %}
+    <div class="reminder" aria-live="polite">
+      <div class="body" style="display:flex; justify-content:space-between; align-items:flex-start; width:100%">
+        <form method="post" action="{{ url_for('update_note', id=n.id) }}" style="flex:1; margin-right:12px">
+          <input type="text" name="content" value="{{ n.content }}" maxlength="500" class="large-input"/>
+          <div class="meta">Atualizada: {{ n.updated_at.strftime('%d/%m/%Y %H:%M') }}</div>
+          <div class="row small" style="justify-content:flex-end; gap:8px">
+            <button class="primary" aria-label="Salvar nota">💾 Salvar</button>
+          </div>
+        </form>
+        <div class="actions">
+          <form method="post" action="{{ url_for('delete_note', id=n.id) }}" class="delete-form">
+            <button class="danger" aria-label="Excluir nota">🗑️ Excluir</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% else %}
+      <div class="empty-state">
+        <h3>Sem notas ainda</h3>
+        <p>Adicione notas rápidas para não esquecer.</p>
+      </div>
+    {% endfor %}
+  </section>
+
+  {% if pagination and pagination.pages > 1 %}
+  <nav class="pagination" aria-label="Paginação de notas">
+    <ul>
+      <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
+        <a class="page-link" href="{{ url_for('notes', q=q, page=pagination.prev_num) if pagination.has_prev else '#' }}" aria-label="Anterior">«</a>
+      </li>
+      {% for p in range(1, pagination.pages + 1) %}
+      <li class="page-item {{ 'active' if p == pagination.page else '' }}">
+        <a class="page-link" href="{{ url_for('notes', q=q, page=p) }}">{{ p }}</a>
+      </li>
+      {% endfor %}
+      <li class="page-item {{ 'disabled' if not pagination.has_next }}">
+        <a class="page-link" href="{{ url_for('notes', q=q, page=pagination.next_num) if pagination.has_next else '#' }}" aria-label="Próxima">»</a>
+      </li>
+    </ul>
+  </nav>
+  {% endif %}
+{% endblock %}
