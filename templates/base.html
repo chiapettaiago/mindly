@@ -4,7 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Mindly</title>
-    <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Mindly">
+  <link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACtWK6eAAAACXBIWXMAAAsSAAALEgHS3X78AAAAJElEQVR4nO3BMQEAAADCoPVPbQ0PoAAAAAAAAAAAAAAAAAAAeNcGswAAGvSxBQAAAABJRU5ErkJggg==">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/icon-192.svg">
+  <link rel="alternate icon" href="/static/icons/icon-512.svg" sizes="512x512" type="image/svg+xml">
   </head>
   <body data-endpoint="{{ request.endpoint }}">
     {% if request.endpoint not in ['login', 'register'] %}
@@ -152,6 +160,8 @@
         </div>
 
         <div class="modal-actions prefs-actions">
+          <button class="secondary" type="button" onclick="openSystemInfo()">Informações do sistema</button>
+          <button class="secondary" type="button" id="installPwaBtn" style="display:none" onclick="installPwa()">Instalar app</button>
           <button class="danger" onclick="closeModal('preferencesModal')">Fechar</button>
           <button class="primary" onclick="savePreferences()">Salvar</button>
         </div>
@@ -171,6 +181,27 @@
       </div>
     </div>
 
+    <!-- Modal informações do sistema -->
+    <div id="systemInfoModal" class="modal" style="display:none">
+      <div class="modal-content create-modal" style="max-width:520px">
+        <h3>ℹ️ Informações do sistema</h3>
+        <div class="form-group" id="systemInfoContent"></div>
+        <div class="modal-actions">
+          <button class="primary" type="button" onclick="closeModal('systemInfoModal')">Fechar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chip flutuante de instalação (PWA) -->
+    <button id="installChip" class="install-chip" onclick="installPwa()" style="display:none" aria-label="Instalar app Mindly">
+      <span class="chip-icon">⬇️</span>
+      <span class="chip-text">Instalar Mindly</span>
+    </button>
+
+    <script>
+      document.documentElement.setAttribute('data-app-version', '{{ app_version }}');
+      document.documentElement.setAttribute('data-app-manufacturer', '{{ app_manufacturer }}');
+    </script>
     <script src="/static/app.js"></script>
   </body>
 </html>

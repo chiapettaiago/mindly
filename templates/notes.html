@@ -36,6 +36,7 @@
     <div class="reminder" aria-live="polite">
       <div class="body" style="display:flex; justify-content:space-between; align-items:flex-start; width:100%">
         <form method="post" action="{{ url_for('update_note', id=n.id) }}" style="flex:1; margin-right:12px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="text" name="content" value="{{ n.content }}" maxlength="500" class="large-input"/>
           <div class="meta">Atualizada: {{ n.updated_at.strftime('%d/%m/%Y %H:%M') }}</div>
           <div class="row small" style="justify-content:flex-end; gap:8px">
@@ -44,6 +45,7 @@
         </form>
         <div class="actions">
           <form method="post" action="{{ url_for('delete_note', id=n.id) }}" class="delete-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="danger" aria-label="Excluir nota">🗑️ Excluir</button>
           </form>
         </div>

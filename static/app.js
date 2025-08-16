@@ -12,6 +12,30 @@ let themeMedia = null;
 // Preferências em memória
 let prefs = { themePreference: 'system', notifyHighToast: true, useSystemNotifications: true, fontScale:'medium', listDensity:'default', playSoundHigh:false };
 
+// PWA install state
+let deferredPrompt = null;
+let isStandalone = false;
+
+function checkStandalone() {
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || 
+         window.navigator.standalone === true ||
+         document.referrer.includes('android-app://');
+}
+
+function showInstallButtons() {
+  const btn = document.getElementById('installPwaBtn');
+  const chip = document.getElementById('installChip');
+  if (btn) btn.style.display = 'inline-flex';
+  if (chip) chip.style.display = 'inline-flex';
+}
+
+function hideInstallButtons() {
+  const btn = document.getElementById('installPwaBtn');
+  const chip = document.getElementById('installChip');
+  if (btn) btn.style.display = 'none';
+  if (chip) chip.style.display = 'none';
+}
+
 function applyInterfacePrefs(){
   const root = document.documentElement;
   root.setAttribute('data-font', prefs.fontScale || 'medium');
@@ -170,6 +194,29 @@ function closeModal(modalId) {
     modal.style.display = 'none';
     document.body.style.overflow = 'auto';
   }
+}
+
+// System Info
+function openSystemInfo(){
+  try{
+    const v = document.documentElement.getAttribute('data-app-version') || 'dev';
+    const m = document.documentElement.getAttribute('data-app-manufacturer') || 'Mindly';
+    const ua = navigator.userAgent;
+    const plat = navigator.platform || '';
+    const lang = navigator.language || '';
+    const content = `
+      <div class="info-grid" style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:center;text-align:left">
+  <div class="muted">Desenvolvido por</div><div><strong>Iago Filgueiras Chiapetta</strong></div>
+        <div class="muted">Fabricante</div><div><strong>${m}</strong></div>
+        <div class="muted">Versão</div><div><strong>${v}</strong></div>
+        <div class="muted">Plataforma</div><div>${plat}</div>
+        <div class="muted">Idioma</div><div>${lang}</div>
+        <div class="muted">User Agent</div><div style="word-break:break-all">${ua}</div>
+      </div>`;
+    const container = document.getElementById('systemInfoContent');
+    if (container){ container.innerHTML = content; }
+  }catch{}
+  showModal('systemInfoModal');
 }
 
 let reminderToDelete = null;
@@ -335,6 +382,23 @@ window.addEventListener('DOMContentLoaded', () => {
   const confirmDeleteBtn = document.getElementById('confirmDelete');
   
   if (confirmDeleteBtn) confirmDeleteBtn.addEventListener('click', executeDelete);
+  // Toggle de senha (delegação)
+  document.body.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-toggle="password"]');
+    if (!btn) return;
+    const form = btn.closest('form');
+    if (!form) return;
+    // tenta encontrar o input de senha pelo tipo
+    let input = form.querySelector('input[type="password"], input[name="password"]');
+    if (!input) return;
+    const isHidden = input.type === 'password';
+    try {
+      input.type = isHidden ? 'text' : 'password';
+      btn.setAttribute('aria-pressed', String(isHidden));
+      btn.title = isHidden ? 'Ocultar senha' : 'Mostrar senha';
+      btn.textContent = isHidden ? '🙈' : '👁️';
+    } catch {}
+  });
   
   // Pedir permissão para notificações uma única vez
   if ('Notification' in window && Notification.permission === 'default') {
@@ -383,12 +447,58 @@ window.addEventListener('DOMContentLoaded', () => {
     }, timeout);
   });
   
+  // PWA: registrar SW
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+  
+  // Verificar se já está em standalone
+  isStandalone = checkStandalone();
+  
+  // Capturar prompt de instalação (Android/Chrome)
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (!isStandalone) {
+      showInstallButtons();
+    }
+  });
+  
+  // iOS: mostrar botões se não estiver instalado
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (isIOS && !isStandalone) {
+    showInstallButtons();
+  }
+  
+  // Para teste: sempre mostrar botões (remover depois)
+  if (!isStandalone) {
+    showInstallButtons();
+  }
+  
+  // Ocultar botões após instalação
+  window.addEventListener('appinstalled', () => {
+    hideInstallButtons();
+    isStandalone = true;
+    if (typeof showToast==='function') showToast('App instalado com sucesso.', 'success');
+  });
+  
   try{
     const endpoint = document.body.getAttribute('data-endpoint');
     if (sessionStorage.getItem('openCreateReminder') === '1' && endpoint === 'index'){
       sessionStorage.removeItem('openCreateReminder');
       showModal('createReminderModal');
     }
+    if (sessionStorage.getItem('openCreateNote') === '1' && endpoint === 'notes'){
+      sessionStorage.removeItem('openCreateNote');
+      const isMobile = window.innerWidth <= 768;
+      if (isMobile) {
+        showModal('createNoteModal');
+      } else {
+        const input = document.getElementById('noteInput');
+        if (input){ input.scrollIntoView({behavior:'smooth', block:'center'}); input.focus(); }
+      }
+    }
+    // Fallback para compatibilidade (antigo focusNewNote)
     if (sessionStorage.getItem('focusNewNote') === '1' && endpoint === 'notes'){
       sessionStorage.removeItem('focusNewNote');
       const input = document.getElementById('noteInput');
@@ -502,9 +612,125 @@ function goToCreate(kind){
   }
 }
 
+// PWA: fluxo de instalação
+async function installPwa(){
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  
+  if (isIOS) {
+    const content = `
+      <div style="text-align:left">
+        <p>Para instalar no iOS (Safari):</p>
+        <ol style="padding-left:18px">
+          <li>Toque em Compartilhar (ícone de quadrado com seta para cima).</li>
+          <li>Selecione <strong>Adicionar à Tela de Início</strong>.</li>
+          <li>Confirme e toque em <strong>Adicionar</strong>.</li>
+        </ol>
+      </div>`;
+    const container = document.getElementById('systemInfoContent');
+    if (container) container.innerHTML = content;
+    showModal('systemInfoModal');
+    return;
+  }
+  
+  // Para Android/Chrome: se não há deferredPrompt, mostrar instruções alternativas
+  if (!deferredPrompt) {
+    const content = `
+      <div style="text-align:left">
+        <p><strong>Para instalar como app:</strong></p>
+        <ol style="padding-left:18px">
+          <li>Acesse este site via <strong>HTTPS</strong> (necessário para PWA).</li>
+          <li>No Chrome: toque nos 3 pontos → "Instalar app" ou "Adicionar à tela inicial".</li>
+          <li>No Firefox: toque no ícone de casa com + na barra de endereço.</li>
+        </ol>
+        <p class="muted">Nota: Em localhost HTTP, a instalação automática não está disponível.</p>
+      </div>`;
+    const container = document.getElementById('systemInfoContent');
+    if (container) container.innerHTML = content;
+    showModal('systemInfoModal');
+    return;
+  }
+  
+  // Se temos o prompt nativo, usar
+  deferredPrompt.prompt();
+  const choice = await deferredPrompt.userChoice.catch(()=>({ outcome:'dismissed' }));
+  if (choice && choice.outcome === 'accepted') {
+    if (typeof showToast==='function') showToast('Instalação iniciada.', 'success');
+  } else {
+    if (typeof showToast==='function') showToast('Instalação cancelada.', 'info');
+  }
+  deferredPrompt = null;
+}
+
 // Após carregar, se deve abrir/criar
 window.addEventListener('DOMContentLoaded', () => {
-  // ...existing code...
+  const confirmDeleteBtn = document.getElementById('confirmDelete');
+  
+  if (confirmDeleteBtn) confirmDeleteBtn.addEventListener('click', executeDelete);
+  // Toggle de senha (delegação)
+  document.body.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-toggle="password"]');
+    if (!btn) return;
+    const form = btn.closest('form');
+    if (!form) return;
+    // tenta encontrar o input de senha pelo tipo
+    let input = form.querySelector('input[type="password"], input[name="password"]');
+    if (!input) return;
+    const isHidden = input.type === 'password';
+    try {
+      input.type = isHidden ? 'text' : 'password';
+      btn.setAttribute('aria-pressed', String(isHidden));
+      btn.title = isHidden ? 'Ocultar senha' : 'Mostrar senha';
+      btn.textContent = isHidden ? '🙈' : '👁️';
+    } catch {}
+  });
+  
+  // Pedir permissão para notificações uma única vez
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+  
+  // Inicializa tema
+  initTheme();
+
+  // Sidebar: restaurar preferência (padrão: colapsada em telas grandes)
+  const sidebar = document.getElementById('sidebar');
+  const mainContent = document.getElementById('mainContent');
+  if (sidebar && mainContent) {
+    const pref = loadSidebarPref();
+    const shouldCollapse = (pref === null) ? (window.innerWidth > 768) : pref;
+    if (window.innerWidth > 768 && shouldCollapse) {
+      sidebar.classList.add('collapsed');
+      mainContent.classList.add('sidebar-collapsed');
+    } else {
+      sidebar.classList.remove('collapsed');
+      mainContent.classList.remove('sidebar-collapsed');
+    }
+  }
+  
+  // Verificar notificações com maior frequência (a cada 30s)
+  checkNotifications();
+  clearInterval(notificationInterval);
+  notificationInterval = setInterval(checkNotifications, 30000);
+  
+  // Fechar modais ao clicar fora
+  document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('modal')) {
+      closeModal(e.target.id);
+    }
+  });
+
+  // Auto-hide para flashes renderizados pelo backend (estilo toast)
+  const toasts = document.querySelectorAll('#toastContainer .flash');
+  toasts.forEach((t, i) => {
+    const timeout = 4000 + i * 300;
+    setTimeout(() => {
+      if (t.isConnected) {
+        t.classList.add('hiding');
+        setTimeout(() => t.remove(), 200);
+      }
+    }, timeout);
+  });
+  
   try{
     const endpoint = document.body.getAttribute('data-endpoint');
     if (sessionStorage.getItem('openCreateReminder') === '1' && endpoint === 'index'){

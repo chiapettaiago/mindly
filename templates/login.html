@@ -1,30 +1,55 @@
 {% extends 'base.html' %}
 {% block content %}
-  <div class="auth-card">
-    <h2>🧠 Entre no Mindly</h2>
+  <div class="auth-card" role="region" aria-labelledby="loginTitle">
+    <h2 id="loginTitle">🧠 Entre no Mindly</h2>
     <form method="post" novalidate>
       {{ form.hidden_tag() }}
 
-      <div class="input-group">
+      {# Email #}
+      <div class="input-group{% if form.email.errors %} has-error{% endif %}">
         <span class="input-icon" aria-hidden>📧</span>
-        {{ form.email(class_='input', placeholder='Email', aria_label='Email') }}
+        {{ form.email(
+            class_='input',
+            placeholder='Email',
+            aria_label='Email',
+            type='email',
+            autocomplete='email',
+            inputmode='email',
+            required=True,
+            aria_describedby='email-error'
+        ) }}
       </div>
+      {% if form.email.errors %}
+        <div class="error-text" id="email-error" role="alert" aria-live="polite">{{ form.email.errors[0] }}</div>
+      {% endif %}
 
-      <div class="input-group">
+      {# Senha #}
+      <div class="input-group{% if form.password.errors %} has-error{% endif %}">
         <span class="input-icon" aria-hidden>🔒</span>
-        {{ form.password(class_='input', placeholder='Senha', aria_label='Senha') }}
+        {{ form.password(
+            class_='input',
+            placeholder='Senha',
+            aria_label='Senha',
+            autocomplete='current-password',
+            required=True,
+            aria_describedby='password-error'
+        ) }}
+        <button type="button" class="input-addon icon-btn" data-toggle="password" data-target="password" aria-label="Mostrar senha" aria-pressed="false" title="Mostrar/ocultar senha">👁️</button>
       </div>
+      {% if form.password.errors %}
+        <div class="error-text" id="password-error" role="alert" aria-live="polite">{{ form.password.errors[0] }}</div>
+      {% endif %}
 
-      <div class="form-row small" style="justify-content:space-between;align-items:center">
+      <div class="form-row small between">
         <label class="checkbox-inline">{{ form.remember() }} Manter conectado neste dispositivo</label>
         <a class="muted" href="#">Esqueci a senha</a>
       </div>
 
-      <div style="margin-top:14px">
+      <div class="form-actions">
         {{ form.submit(class_='primary block') }}
       </div>
     </form>
 
-    <p class="muted" style="margin-top:12px">Não tem conta? <a href="{{ url_for('register') }}">Cadastre-se</a></p>
+    <p class="muted auth-alt">Não tem conta? <a href="{{ url_for('register') }}">Cadastre-se</a></p>
   </div>
 {% endblock %}

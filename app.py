@@ -3,19 +3,25 @@ import secrets
 from datetime import datetime, timedelta
 
 from flask import Flask, render_template, redirect, url_for, flash, request, jsonify
+from flask_wtf import CSRFProtect
+from flask_wtf.csrf import generate_csrf, CSRFError
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from forms import RegisterForm, LoginForm, ReminderForm, NoteForm
 from models import db, User, Reminder, Device, Note
+from flask import send_from_directory
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'mudar-para-uma-chave-secreta')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///lembretes.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=365)
+app.config['APP_VERSION'] = os.environ.get('APP_VERSION', '0.1.0')
+app.config['APP_MANUFACTURER'] = os.environ.get('APP_MANUFACTURER', 'Mindly')
 
 db.init_app(app)
+csrf = CSRFProtect(app)
 login = LoginManager(app)
 login.login_view = 'login'
 
@@ -35,6 +41,24 @@ else:
     @app.before_first_request
     def create_tables():
         db.create_all()
+
+@app.context_processor
+def inject_globals():
+    return {
+    'app_version': app.config.get('APP_VERSION', 'dev'),
+    'app_manufacturer': app.config.get('APP_MANUFACTURER', 'Mindly'),
+    'csrf_token': lambda: generate_csrf()
+    }
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    flash('Falha de segurança (CSRF). Atualize a página e tente novamente.', 'danger')
+    return redirect(request.referrer or url_for('index'))
+
+@app.route('/sw.js')
+def service_worker():
+    # Servir o service worker da raiz para ter escopo em todo o app
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'sw.js', mimetype='application/javascript')
 
 @app.route('/')
 @login_required
@@ -265,4 +289,4 @@ def delete_note(id):
     return redirect(url_for('notes'))
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)
