@@ -75,6 +75,11 @@ def invalidate_user_cache(user_id):
     cache.delete(f'user_reminders_{user_id}')
     cache.delete(f'api_reminders_{user_id}')
     cache.delete(f'notifications_{user_id}')
+    # Bump de versão do cache de notas para evitar chaves antigas
+    try:
+        cache.set(f'notes_bust_{user_id}', int(time.time()), timeout=24*3600)
+    except Exception:
+        pass
 
 def get_cache_config():
     """Configura cache com fallback inteligente"""
@@ -139,6 +144,11 @@ def invalidate_user_cache(user_id):
     cache.delete(f'user_reminders_{user_id}')
     cache.delete(f'api_reminders_{user_id}')
     cache.delete(f'notifications_{user_id}')
+    # Bump de versão do cache de notas para evitar chaves antigas
+    try:
+        cache.set(f'notes_bust_{user_id}', int(time.time()), timeout=24*3600)
+    except Exception:
+        pass
 
 @login.user_loader
 def load_user(user_id):
@@ -165,7 +175,8 @@ def inject_globals():
     return {
     'app_version': app.config.get('APP_VERSION', 'dev'),
     'app_manufacturer': app.config.get('APP_MANUFACTURER', 'Mindly'),
-    'csrf_token': lambda: generate_csrf()
+    'csrf_token': lambda: generate_csrf(),
+    'range': range
     }
 
 @app.errorhandler(CSRFError)
@@ -176,7 +187,14 @@ def handle_csrf_error(e):
 @app.route('/sw.js')
 def service_worker():
     # Servir o service worker da raiz para ter escopo em todo o app
-    return send_from_directory(os.path.join(app.root_path, 'static'), 'sw.js', mimetype='application/javascript')
+    resp = send_from_directory(os.path.join(app.root_path, 'static'), 'sw.js', mimetype='application/javascript')
+    try:
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+    except Exception:
+        pass
+    return resp
 
 @app.route('/')
 @login_required
@@ -435,66 +453,67 @@ def notes():
         invalidate_user_cache(current_user.id)
         
         flash('Nota adicionada', 'success')
-        return redirect(url_for('notes'))
+        return redirect(url_for('notes', t=int(time.time())), code=303)
     
-    # Cache apenas para GET requests
-    cache_key = f"notes:user:{current_user.id}:page:{request.args.get('page', 1)}:q:{request.args.get('q', '')}"
-    cached_data = cache.get(cache_key)
-    
-    if cached_data is None:
-        q = request.args.get('q', type=str, default='')
-        page = request.args.get('page', type=int, default=1)
-        per_page = 50
-        query = Note.query.filter_by(user_id=current_user.id)
-        if q:
-            like = f"%{q}%"
-            query = query.filter(Note.content.ilike(like))
-        query = query.order_by(Note.updated_at.desc())
-        try:
-            pagination = db.paginate(query, page=page, per_page=per_page, error_out=False)
-            items = pagination.items
-        except Exception:
-            # Fallback simples caso paginate não esteja disponível
-            items = query.limit(per_page).offset((page - 1) * per_page).all()
-            class SimplePagination:
-                def __init__(self, items, page, per_page, total):
-                    self.items = items
-                    self.page = page
-                    self.per_page = per_page
-                    self.total = total
-                    self.pages = (total + per_page - 1) // per_page if per_page else 1
-                @property
-                def has_prev(self):
-                    return self.page > 1
-                @property
-                def has_next(self):
-                    return self.page < self.pages
-                @property
-                def prev_num(self):
-                    return self.page - 1
-                @property
-                def next_num(self):
-                    return self.page + 1
-            total = query.count()
-            pagination = SimplePagination(items, page, per_page, total)
-        
-        # Serializar notes para cache
-        serialized_items = []
-        for note in items:
-            serialized_items.append({
-                'id': note.id,
-                'user_id': note.user_id,
-                'content': note.content,
-                'created_at': note.created_at.isoformat() if note.created_at else None,
-                'updated_at': note.updated_at.isoformat() if note.updated_at else None
-            })
-        
-        # Cache por 2 minutos
-        cached_data = {'items': serialized_items, 'pagination': pagination, 'q': q}
-        cache.set(cache_key, cached_data, timeout=120)
-    
-    return render_template('notes.html', form=form, notes=cached_data['items'], 
-                         q=cached_data['q'], pagination=cached_data['pagination'])
+    # Sem cache: sempre buscar do banco para evitar inconsistências
+    q = request.args.get('q', type=str, default='')
+    page = request.args.get('page', type=int, default=1)
+    per_page = 50
+    query = Note.query.filter_by(user_id=current_user.id)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(Note.content.ilike(like))
+    query = query.order_by(Note.updated_at.desc())
+    try:
+        pagination = db.paginate(query, page=page, per_page=per_page, error_out=False)
+        items = pagination.items
+    except Exception:
+        # Fallback simples caso paginate não esteja disponível
+        items = query.limit(per_page).offset((page - 1) * per_page).all()
+        class SimplePagination:
+            def __init__(self, items, page, per_page, total):
+                self.items = items
+                self.page = page
+                self.per_page = per_page
+                self.total = total
+                self.pages = (total + per_page - 1) // per_page if per_page else 1
+            @property
+            def has_prev(self):
+                return self.page > 1
+            @property
+            def has_next(self):
+                return self.page < self.pages
+            @property
+            def prev_num(self):
+                return self.page - 1
+            @property
+            def next_num(self):
+                return self.page + 1
+        total = query.count()
+        pagination = SimplePagination(items, page, per_page, total)
+
+    # Serializar para o template (mantém compatibilidade)
+    serialized_items = []
+    for note in items:
+        serialized_items.append({
+            'id': note.id,
+            'user_id': note.user_id,
+            'content': note.content,
+            'created_at': note.created_at.isoformat() if note.created_at else None,
+            'updated_at': note.updated_at.isoformat() if note.updated_at else None
+        })
+
+    pagination_info = {
+        'page': pagination.page,
+        'pages': pagination.pages,
+        'has_prev': pagination.has_prev,
+        'has_next': pagination.has_next,
+        'prev_num': (pagination.prev_num if getattr(pagination, 'has_prev', False) else None),
+        'next_num': (pagination.next_num if getattr(pagination, 'has_next', False) else None)
+    }
+
+    return render_template('notes.html', form=form, notes=serialized_items, 
+                         q=q, pagination=pagination_info)
 
 @app.route('/notes/update/<int:id>', methods=['POST'])
 @login_required
@@ -505,10 +524,10 @@ def update_note(id):
     content = request.form.get('content', '').strip()
     if not content:
         flash('A nota não pode ficar vazia.', 'danger')
-        return redirect(url_for('notes'))
+        return redirect(url_for('notes'), code=303)
     if len(content) > 500:
         flash('A nota deve ter no máximo 500 caracteres.', 'danger')
-        return redirect(url_for('notes'))
+        return redirect(url_for('notes'), code=303)
     n.content = content
     db.session.commit()
     
@@ -516,7 +535,7 @@ def update_note(id):
     invalidate_user_cache(current_user.id)
     
     flash('Nota atualizada', 'success')
-    return redirect(url_for('notes'))
+    return redirect(url_for('notes', t=int(time.time())), code=303)
 
 @app.route('/notes/delete/<int:id>', methods=['POST'])
 @login_required
@@ -531,7 +550,28 @@ def delete_note(id):
     invalidate_user_cache(current_user.id)
     
     flash('Nota removida', 'info')
-    return redirect(url_for('notes'))
+    return redirect(url_for('notes', t=int(time.time())), code=303)
+
+# Após inicializar app, configurar política de cache para rotas dinâmicas
+@app.after_request
+def add_no_cache_headers(response):
+    try:
+        path = request.path or ''
+        # Desabilitar cache para páginas HTML e APIs
+        if path in ('/', '/login', '/register', '/notes') or \
+           path.startswith('/api/') or \
+           path.startswith('/notes/') or \
+           path.startswith('/delete/') or \
+           path.startswith('/toggle/'):
+            response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            # garantir variação por cookie/sessão
+            existing_vary = response.headers.get('Vary')
+            response.headers['Vary'] = 'Cookie' if not existing_vary else (existing_vary + ', Cookie')
+    except Exception:
+        pass
+    return response
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

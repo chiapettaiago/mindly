@@ -1,10 +1,11 @@
-/* Service Worker básico para Mindly */
-const CACHE_NAME = 'mindly-cache-v1';
+/* Service Worker para Mindly - cache apenas de assets estáticos */
+const CACHE_NAME = 'mindly-static-v3';
 const PRECACHE = [
-  '/',
   '/static/style.css',
   '/static/app.js',
-  '/static/manifest.webmanifest'
+  '/static/manifest.webmanifest',
+  '/static/icons/icon-192.svg',
+  '/static/icons/icon-512.svg'
 ];
 
 self.addEventListener('install', (event) => {
@@ -16,22 +17,52 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    )
   );
   self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
+  const url = new URL(req.url);
+
+  // Apenas GET pode ser cacheado
   if (req.method !== 'GET') return;
+
+  // Não interceptar navegação HTML (evita páginas desatualizadas)
+  const accepts = req.headers.get('accept') || '';
+  if (req.mode === 'navigate' || accepts.includes('text/html')) {
+    event.respondWith(fetch(req));
+    return;
+  }
+
+  // Não cachear APIs dinâmicas
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(req));
+    return;
+  }
+
+  // Apenas assets estáticos
+  const isStatic = url.pathname.startsWith('/static/') || url.pathname.endsWith('/manifest.webmanifest');
+  if (!isStatic) {
+    // Pass-through com fallback ao cache se offline
+    event.respondWith(
+      fetch(req).catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  // Cache-first para assets estáticos
   event.respondWith(
     caches.match(req).then((cached) => {
-      const fetchPromise = fetch(req).then((resp) => {
+      if (cached) return cached;
+      return fetch(req).then((resp) => {
         const copy = resp.clone();
         caches.open(CACHE_NAME).then(cache => cache.put(req, copy)).catch(() => {});
         return resp;
-      }).catch(() => cached);
-      return cached || fetchPromise;
+      });
     })
   );
 });

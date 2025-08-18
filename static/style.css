@@ -194,10 +194,10 @@ input:focus, textarea:focus{ outline:none; border-color:var(--primary); box-shad
 
 .actions{ display:flex; flex-direction:column; gap:8px; align-items:flex-end }
 .actions form{ display:inline }
-
-/* Ajuste para botões de ícone */
-.actions .icon-btn {
-    margin-bottom: 0;
+.actions-bar{ display:flex; flex-direction:column; gap:12px; align-items:flex-end; justify-content:flex-start; padding-left:8px; min-width:48px; /* evita que fiquem muito próximos do conteúdo */ }
+.actions-bar .icon-btn{ margin:0; width:44px; height:44px; font-size:18px; }
+@media (max-width:768px){
+  .actions-bar{ flex-direction:row; align-items:center; gap:10px }
 }
 
 /* Messages/notifications */
