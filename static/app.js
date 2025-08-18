@@ -233,6 +233,20 @@ function executeDelete() {
     form.method = 'POST';
     form.action = `/delete/${reminderToDelete}`;
     form.style.display = 'none';
+    
+    // Adicionar token CSRF
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
+                     document.querySelector('input[name="csrf_token"]')?.value ||
+                     (typeof csrf_token !== 'undefined' ? csrf_token : '');
+    
+    if (csrfToken) {
+      const csrfInput = document.createElement('input');
+      csrfInput.type = 'hidden';
+      csrfInput.name = 'csrf_token';
+      csrfInput.value = csrfToken;
+      form.appendChild(csrfInput);
+    }
+    
     document.body.appendChild(form);
     form.submit();
   }

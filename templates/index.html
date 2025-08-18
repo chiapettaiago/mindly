@@ -90,8 +90,8 @@
         </div>
       </div>
       <div class="actions">
-        <button class="primary" onclick="speakElement(this.closest('.reminder'))" aria-label="Ouvir lembrete {{ r.title }}">🔊 Ouvir</button>
-        <button class="danger" onclick="confirmDelete('{{ r.id }}')" aria-label="Excluir lembrete {{ r.title }}">🗑️ Excluir</button>
+        <button class="icon-btn primary" onclick="speakElement(this.closest('.reminder'))" aria-label="Ouvir lembrete {{ r.title }}" title="Ouvir lembrete">🔊</button>
+        <button class="icon-btn danger" onclick="confirmDelete('{{ r.id }}')" aria-label="Excluir lembrete {{ r.title }}" title="Excluir lembrete">🗑️</button>
       </div>
     </div>
     {% else %}

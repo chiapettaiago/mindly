@@ -1,4 +1,4 @@
-Lembrete - App de lembretes com Flask e SQLite
+Mindly - App de lembretes com Flask e MySQL
 
 Estrutura:
 - app.py: aplicação Flask

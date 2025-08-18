@@ -1,12 +1,26 @@
 import os
 import secrets
+import time
 from datetime import datetime, timedelta
+import pymysql
 
-from flask import Flask, render_template, redirect, url_for, flash, request, jsonify
+# Carregar variáveis de ambiente
+from dotenv import load_dotenv
+load_dotenv()
+
+# Configurar PyMySQL como driver MySQL padrão
+pymysql.install_as_MySQLdb()
+
+from flask import Flask, render_template, redirect, url_for, flash, request, jsonify, session
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import generate_csrf, CSRFError
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from flask_caching import Cache
+from werkzeug.security import generate_password_hash, check_password_hash
+from forms import RegisterForm, LoginForm, ReminderForm, NoteForm
+from models import db, User, Reminder, Device, Note
+from flask import send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from forms import RegisterForm, LoginForm, ReminderForm, NoteForm
 from models import db, User, Reminder, Device, Note
@@ -14,16 +28,118 @@ from flask import send_from_directory
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'mudar-para-uma-chave-secreta')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///lembretes.db'
+
+# Configuração do MySQL
+def get_database_uri():
+    """Constrói a URI do banco de dados MySQL a partir das variáveis de ambiente"""
+    mysql_host = os.environ.get('MYSQL_HOST')
+    mysql_port = os.environ.get('MYSQL_PORT', '3306')
+    mysql_user = os.environ.get('MYSQL_USER')
+    mysql_password = os.environ.get('MYSQL_PASSWORD')
+    mysql_database = os.environ.get('MYSQL_DATABASE', 'mindly')
+    
+    # Verificar se todas as variáveis necessárias estão configuradas
+    if not all([mysql_host, mysql_user, mysql_password]):
+        raise ValueError(
+            "Configuração MySQL incompleta. As seguintes variáveis de ambiente são obrigatórias:\n"
+            "- MYSQL_HOST\n"
+            "- MYSQL_USER\n" 
+            "- MYSQL_PASSWORD\n"
+            "- MYSQL_DATABASE (opcional, padrão: 'mindly')\n\n"
+            "Configure essas variáveis no arquivo .env antes de executar o aplicativo."
+        )
+    
+    return f'mysql+pymysql://{mysql_user}:{mysql_password}@{mysql_host}:{mysql_port}/{mysql_database}?charset=utf8mb4'
+
+app.config['SQLALCHEMY_DATABASE_URI'] = get_database_uri()
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_recycle': 300,
+    'pool_pre_ping': True,
+    'pool_timeout': 20,
+    'max_overflow': 10
+}
 app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=365)
 app.config['APP_VERSION'] = os.environ.get('APP_VERSION', '0.1.0')
 app.config['APP_MANUFACTURER'] = os.environ.get('APP_MANUFACTURER', 'Mindly')
+
+# Configuração do Cache (Memcached)
+def get_cache_config():
+    """Configura cache com fallback inteligente"""
+    memcached_servers = os.environ.get('MEMCACHED_SERVERS')
+    
+    if memcached_servers:
+        # Tenta configurar Memcached remoto
+        try:
+            import memcache
+            
+            # Teste rápido de conectividade
+            test_client = memcache.Client([memcached_servers])
+            test_key = f'mindly_health_check_{int(time.time())}'
+            
+            # Tenta uma operação simples com timeout curto
+            if test_client.set(test_key, 'ok', time=10):
+                test_client.delete(test_key)
+                print(f"✅ Cache: Usando Memcached remoto ({memcached_servers})")
+                
+                return {
+                    'CACHE_TYPE': 'MemcachedCache',
+                    'CACHE_MEMCACHED_SERVERS': [memcached_servers],
+                    'CACHE_DEFAULT_TIMEOUT': 300,  # 5 minutos
+                    'CACHE_KEY_PREFIX': 'mindly_'
+                }
+            else:
+                print(f"⚠️ Cache: Memcached remoto não responde, usando fallback")
+                
+        except ImportError:
+            print("⚠️ Cache: python-memcached não disponível, usando fallback")
+        except Exception as e:
+            print(f"⚠️ Cache: Erro ao conectar Memcached remoto ({e}), usando fallback")
+    
+    # Fallback para SimpleCache (em memória)
+    print("📝 Cache: Usando SimpleCache (em memória)")
+    return {
+        'CACHE_TYPE': 'SimpleCache',
+        'CACHE_DEFAULT_TIMEOUT': 300,  # 5 minutos
+        'CACHE_THRESHOLD': 1000,  # Máximo 1000 itens
+        'CACHE_KEY_PREFIX': 'mindly_'
+    }
+
+# Aplicar configuração de cache
+cache_config = get_cache_config()
+for key, value in cache_config.items():
+    app.config[key] = value
 
 db.init_app(app)
 csrf = CSRFProtect(app)
 login = LoginManager(app)
 login.login_view = 'login'
+
+# Inicializar Cache
+cache = Cache(app)
+
+# Funções helper para cache
+def make_cache_key(*args, **kwargs):
+    """Cria chave de cache única para o usuário atual"""
+    user_id = current_user.id if current_user.is_authenticated else 'anonymous'
+    path = request.path
+    query_string = request.query_string.decode('utf-8')
+    return f"user:{user_id}:path:{path}:query:{query_string}"
+
+def invalidate_user_cache(user_id):
+    """Invalida todo cache relacionado a um usuário específico"""
+    # Limpa chaves que começam com user:{user_id}
+    try:
+        if hasattr(cache.cache, '_client'):  # Memcached
+            # Para Memcached, não podemos enumerar chaves, então usamos timeout curto
+            pass
+        else:  # Simple cache
+            cache_data = cache.cache._cache
+            keys_to_delete = [k for k in cache_data.keys() if k.startswith(f"user:{user_id}")]
+            for key in keys_to_delete:
+                cache.delete(key)
+    except:
+        pass
 
 @login.user_loader
 def load_user(user_id):
@@ -62,6 +178,7 @@ def service_worker():
 
 @app.route('/')
 @login_required
+@cache.cached(timeout=60, key_prefix=make_cache_key)  # Cache por 1 minuto
 def index():
     form = ReminderForm()
     q = request.args.get('q', type=str, default='')
@@ -139,6 +256,10 @@ def add_reminder():
         r = Reminder(title=form.title.data, note=form.note.data, due=due, user_id=current_user.id)
         db.session.add(r)
         db.session.commit()
+        
+        # Invalidar cache do usuário
+        invalidate_user_cache(current_user.id)
+        
         flash('Lembrete adicionado', 'success')
     else:
         flash('Erro ao adicionar lembrete', 'danger')
@@ -152,6 +273,10 @@ def toggle_done(id):
         return 'Forbidden', 403
     r.done = not r.done
     db.session.commit()
+    
+    # Invalidar cache do usuário
+    invalidate_user_cache(current_user.id)
+    
     return redirect(url_for('index'))
 
 @app.route('/delete/<int:id>', methods=['POST'])
@@ -162,11 +287,16 @@ def delete(id):
         return 'Forbidden', 403
     db.session.delete(r)
     db.session.commit()
+    
+    # Invalidar cache do usuário
+    invalidate_user_cache(current_user.id)
+    
     flash('Lembrete removido', 'info')
     return redirect(url_for('index'))
 
 @app.route('/api/reminders')
 @login_required
+@cache.cached(timeout=30, key_prefix=make_cache_key)  # Cache por 30 segundos
 def api_reminders():
     reminders = Reminder.query.filter_by(user_id=current_user.id).all()
     data = [r.to_dict() for r in reminders]
@@ -174,6 +304,7 @@ def api_reminders():
 
 @app.route('/api/notifications')
 @login_required
+@cache.cached(timeout=15, key_prefix=make_cache_key)  # Cache por 15 segundos apenas
 def get_notifications():
     # Usa horário local para casar com o valor salvo (datetime-local do formulário)
     now = datetime.now()
@@ -220,44 +351,60 @@ def notes():
         n = Note(user_id=current_user.id, content=form.content.data)
         db.session.add(n)
         db.session.commit()
+        
+        # Invalidar cache do usuário
+        invalidate_user_cache(current_user.id)
+        
         flash('Nota adicionada', 'success')
         return redirect(url_for('notes'))
-    q = request.args.get('q', type=str, default='')
-    page = request.args.get('page', type=int, default=1)
-    per_page = 50
-    query = Note.query.filter_by(user_id=current_user.id)
-    if q:
-        like = f"%{q}%"
-        query = query.filter(Note.content.ilike(like))
-    query = query.order_by(Note.updated_at.desc())
-    try:
-        pagination = db.paginate(query, page=page, per_page=per_page, error_out=False)
-        items = pagination.items
-    except Exception:
-        # Fallback simples caso paginate não esteja disponível
-        items = query.limit(per_page).offset((page - 1) * per_page).all()
-        class SimplePagination:
-            def __init__(self, items, page, per_page, total):
-                self.items = items
-                self.page = page
-                self.per_page = per_page
-                self.total = total
-                self.pages = (total + per_page - 1) // per_page if per_page else 1
-            @property
-            def has_prev(self):
-                return self.page > 1
-            @property
-            def has_next(self):
-                return self.page < self.pages
-            @property
-            def prev_num(self):
-                return self.page - 1
-            @property
-            def next_num(self):
-                return self.page + 1
-        total = query.count()
-        pagination = SimplePagination(items, page, per_page, total)
-    return render_template('notes.html', form=form, notes=items, q=q, pagination=pagination)
+    
+    # Cache apenas para GET requests
+    cache_key = f"notes:user:{current_user.id}:page:{request.args.get('page', 1)}:q:{request.args.get('q', '')}"
+    cached_data = cache.get(cache_key)
+    
+    if cached_data is None:
+        q = request.args.get('q', type=str, default='')
+        page = request.args.get('page', type=int, default=1)
+        per_page = 50
+        query = Note.query.filter_by(user_id=current_user.id)
+        if q:
+            like = f"%{q}%"
+            query = query.filter(Note.content.ilike(like))
+        query = query.order_by(Note.updated_at.desc())
+        try:
+            pagination = db.paginate(query, page=page, per_page=per_page, error_out=False)
+            items = pagination.items
+        except Exception:
+            # Fallback simples caso paginate não esteja disponível
+            items = query.limit(per_page).offset((page - 1) * per_page).all()
+            class SimplePagination:
+                def __init__(self, items, page, per_page, total):
+                    self.items = items
+                    self.page = page
+                    self.per_page = per_page
+                    self.total = total
+                    self.pages = (total + per_page - 1) // per_page if per_page else 1
+                @property
+                def has_prev(self):
+                    return self.page > 1
+                @property
+                def has_next(self):
+                    return self.page < self.pages
+                @property
+                def prev_num(self):
+                    return self.page - 1
+                @property
+                def next_num(self):
+                    return self.page + 1
+            total = query.count()
+            pagination = SimplePagination(items, page, per_page, total)
+        
+        # Cache por 2 minutos
+        cached_data = {'items': items, 'pagination': pagination, 'q': q}
+        cache.set(cache_key, cached_data, timeout=120)
+    
+    return render_template('notes.html', form=form, notes=cached_data['items'], 
+                         q=cached_data['q'], pagination=cached_data['pagination'])
 
 @app.route('/notes/update/<int:id>', methods=['POST'])
 @login_required
@@ -274,6 +421,10 @@ def update_note(id):
         return redirect(url_for('notes'))
     n.content = content
     db.session.commit()
+    
+    # Invalidar cache do usuário
+    invalidate_user_cache(current_user.id)
+    
     flash('Nota atualizada', 'success')
     return redirect(url_for('notes'))
 
@@ -285,6 +436,10 @@ def delete_note(id):
         return 'Forbidden', 403
     db.session.delete(n)
     db.session.commit()
+    
+    # Invalidar cache do usuário
+    invalidate_user_cache(current_user.id)
+    
     flash('Nota removida', 'info')
     return redirect(url_for('notes'))
 
