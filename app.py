@@ -29,6 +29,12 @@ from flask import send_from_directory
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'mudar-para-uma-chave-secreta')
 
+# Configurações de sessão mais robustas
+app.config['SESSION_COOKIE_SECURE'] = False  # True apenas em HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)  # Aumentar para 24 horas
+
 # Configuração do MySQL
 def get_database_uri():
     """Constrói a URI do banco de dados MySQL a partir das variáveis de ambiente"""
@@ -59,11 +65,17 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_timeout': 20,
     'max_overflow': 10
 }
-app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=365)
+app.config['REMEMBER_COOKIE_DURATION'] = timedelta(hours=24)  # Diminuir para 24 horas para testes
 app.config['APP_VERSION'] = os.environ.get('APP_VERSION', '0.1.0')
 app.config['APP_MANUFACTURER'] = os.environ.get('APP_MANUFACTURER', 'Mindly')
 
 # Configuração do Cache (Memcached)
+def invalidate_user_cache(user_id):
+    """Invalida todos os caches relacionados a um usuário"""
+    cache.delete(f'user_reminders_{user_id}')
+    cache.delete(f'api_reminders_{user_id}')
+    cache.delete(f'notifications_{user_id}')
+
 def get_cache_config():
     """Configura cache com fallback inteligente"""
     memcached_servers = os.environ.get('MEMCACHED_SERVERS')
@@ -114,36 +126,26 @@ db.init_app(app)
 csrf = CSRFProtect(app)
 login = LoginManager(app)
 login.login_view = 'login'
+login.login_message = 'Por favor, faça login para acessar esta página.'
+login.login_message_category = 'info'
+login.session_protection = 'basic'  # Mudar de 'strong' para 'basic' para reduzir problemas
 
 # Inicializar Cache
 cache = Cache(app)
 
 # Funções helper para cache
-def make_cache_key(*args, **kwargs):
-    """Cria chave de cache única para o usuário atual"""
-    user_id = current_user.id if current_user.is_authenticated else 'anonymous'
-    path = request.path
-    query_string = request.query_string.decode('utf-8')
-    return f"user:{user_id}:path:{path}:query:{query_string}"
-
 def invalidate_user_cache(user_id):
-    """Invalida todo cache relacionado a um usuário específico"""
-    # Limpa chaves que começam com user:{user_id}
-    try:
-        if hasattr(cache.cache, '_client'):  # Memcached
-            # Para Memcached, não podemos enumerar chaves, então usamos timeout curto
-            pass
-        else:  # Simple cache
-            cache_data = cache.cache._cache
-            keys_to_delete = [k for k in cache_data.keys() if k.startswith(f"user:{user_id}")]
-            for key in keys_to_delete:
-                cache.delete(key)
-    except:
-        pass
+    """Invalida todos os caches relacionados a um usuário"""
+    cache.delete(f'user_reminders_{user_id}')
+    cache.delete(f'api_reminders_{user_id}')
+    cache.delete(f'notifications_{user_id}')
 
 @login.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    try:
+        return User.query.get(int(user_id))
+    except (ValueError, TypeError):
+        return None
 
 # Cria tabelas de forma compatível com diferentes versões do Flask
 try:
@@ -178,19 +180,43 @@ def service_worker():
 
 @app.route('/')
 @login_required
-@cache.cached(timeout=60, key_prefix=make_cache_key)  # Cache por 1 minuto
 def index():
-    form = ReminderForm()
-    q = request.args.get('q', type=str, default='')
-    query = Reminder.query.filter_by(user_id=current_user.id)
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            (Reminder.title.ilike(like)) | 
-            (Reminder.note.ilike(like))
-        )
-    reminders = query.order_by(Reminder.due.asc()).all()
-    return render_template('index.html', reminders=reminders, form=form, q=q)
+    """Página principal com cache inteligente"""
+    form = ReminderForm()  # Adicionar o form necessário para o template
+    user_id = current_user.id
+    cache_key = f'user_reminders_{user_id}'
+    
+    # Tenta buscar do cache primeiro
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return render_template('index.html', 
+                             form=form,
+                             reminders=cached_data, 
+                             cache_hit=True)
+    
+    # Se não está no cache, busca do banco
+    reminders = Reminder.query.filter_by(user_id=user_id).all()
+    
+    # Serializa os dados para cache (apenas dicionários/listas básicas)
+    serializable_reminders = []
+    for reminder in reminders:
+        serializable_reminders.append({
+            'id': reminder.id,
+            'title': reminder.title,
+            'note': reminder.note,
+            'due': reminder.due.isoformat() if reminder.due else None,
+            'created': reminder.created.isoformat() if reminder.created else None,
+            'done': reminder.done,
+            'user_id': reminder.user_id
+        })
+    
+    # Salva no cache
+    cache.set(cache_key, serializable_reminders, timeout=60)
+    
+    return render_template('index.html', 
+                         form=form,
+                         reminders=serializable_reminders, 
+                         cache_hit=False)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -214,6 +240,11 @@ def login():
         user = User.query.filter_by(email=form.email.data).first()
         if user and check_password_hash(user.password, form.password.data):
             remember = bool(form.remember.data)
+            
+            # Configurar sessão permanente se remember estiver marcado
+            if remember:
+                session.permanent = True
+            
             login_user(user, remember=remember)
 
             # registrar dispositivo se o usuário pediu para ser lembrado
@@ -296,16 +327,54 @@ def delete(id):
 
 @app.route('/api/reminders')
 @login_required
-@cache.cached(timeout=30, key_prefix=make_cache_key)  # Cache por 30 segundos
 def api_reminders():
-    reminders = Reminder.query.filter_by(user_id=current_user.id).all()
-    data = [r.to_dict() for r in reminders]
-    return jsonify(data)
+    """API de lembretes com cache por usuário"""
+    user_id = current_user.id
+    cache_key = f'api_reminders_{user_id}'
+    
+    # Busca do cache primeiro
+    cached_reminders = cache.get(cache_key)
+    if cached_reminders:
+        return jsonify({
+            'reminders': cached_reminders,
+            'cache_hit': True
+        })
+    
+    # Busca do banco se não está no cache
+    reminders = Reminder.query.filter_by(user_id=user_id).all()
+    
+    # Serializa para JSON
+    reminders_data = []
+    for reminder in reminders:
+        reminders_data.append({
+            'id': reminder.id,
+            'title': reminder.title,
+            'note': reminder.note,
+            'due': reminder.due.isoformat() if reminder.due else None,
+            'created': reminder.created.isoformat() if reminder.created else None,
+            'done': reminder.done
+        })
+    
+    # Salva no cache
+    cache.set(cache_key, reminders_data, timeout=30)
+    
+    return jsonify({
+        'reminders': reminders_data,
+        'cache_hit': False
+    })
 
 @app.route('/api/notifications')
 @login_required
-@cache.cached(timeout=15, key_prefix=make_cache_key)  # Cache por 15 segundos apenas
 def get_notifications():
+    """API de notificações com cache manual"""
+    user_id = current_user.id
+    cache_key = f'notifications_{user_id}'
+    
+    # Busca do cache
+    cached_notifications = cache.get(cache_key)
+    if cached_notifications:
+        return jsonify(cached_notifications)
+    
     # Usa horário local para casar com o valor salvo (datetime-local do formulário)
     now = datetime.now()
     # Busca lembretes no intervalo [-5min, +24h] não concluídos
@@ -341,7 +410,17 @@ def get_notifications():
             'minutes_left': minutes_left
         })
     
-    return jsonify(notifications)
+    # Prepara dados para cache
+    notification_data = {
+        'notifications': notifications,
+        'count': len(notifications),
+        'timestamp': now.isoformat()
+    }
+    
+    # Salva no cache por 15 segundos
+    cache.set(cache_key, notification_data, timeout=15)
+    
+    return jsonify(notification_data)
 
 @app.route('/notes', methods=['GET', 'POST'])
 @login_required
@@ -399,8 +478,19 @@ def notes():
             total = query.count()
             pagination = SimplePagination(items, page, per_page, total)
         
+        # Serializar notes para cache
+        serialized_items = []
+        for note in items:
+            serialized_items.append({
+                'id': note.id,
+                'user_id': note.user_id,
+                'content': note.content,
+                'created_at': note.created_at.isoformat() if note.created_at else None,
+                'updated_at': note.updated_at.isoformat() if note.updated_at else None
+            })
+        
         # Cache por 2 minutos
-        cached_data = {'items': items, 'pagination': pagination, 'q': q}
+        cached_data = {'items': serialized_items, 'pagination': pagination, 'q': q}
         cache.set(cache_key, cached_data, timeout=120)
     
     return render_template('notes.html', form=form, notes=cached_data['items'], 

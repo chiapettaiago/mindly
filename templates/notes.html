@@ -38,7 +38,7 @@
         <form method="post" action="{{ url_for('update_note', id=n.id) }}" style="flex:1; margin-right:12px">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="text" name="content" value="{{ n.content }}" maxlength="500" class="large-input"/>
-          <div class="meta">Atualizada: {{ n.updated_at.strftime('%d/%m/%Y %H:%M') }}</div>
+          <div class="meta">Atualizada: {{ n.updated_at[:16] if n.updated_at else 'N/A' }}</div>
           <div class="row small" style="justify-content:flex-end; gap:8px">
             <button class="primary" aria-label="Salvar nota">💾 Salvar</button>
           </div>

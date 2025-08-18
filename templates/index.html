@@ -73,7 +73,7 @@
 
   <section class="list">
     {% for r in reminders %}
-    <div class="reminder {% if r.done %}done{% endif %}" aria-live="polite" data-title="{{ r.title|e }}" data-note="{{ r.note|e if r.note else '' }}" data-due="{{ r.due.strftime('%d/%m/%Y %H:%M') if r.due else '' }}">
+    <div class="reminder {% if r.done %}done{% endif %}" aria-live="polite" data-title="{{ r.title|e }}" data-note="{{ r.note|e if r.note else '' }}" data-due="{{ r.due if r.due else '' }}">
       <div class="left">
         <form method="get" action="{{ url_for('toggle_done', id=r.id) }}" aria-label="Marcar como feito">
           <button class="check big-check" aria-label="Marcar lembrete {{ r.title }} como feito">{% if r.done %}✓{% else %}○{% endif %}</button>
@@ -83,9 +83,9 @@
         <div class="title">{{ r.title }}</div>
         {% if r.note %}<div class="note">{{ r.note }}</div>{% endif %}
         <div class="meta">
-          <span>Criado: {{ r.created.strftime('%d/%m/%Y %H:%M') }}</span>
+          <span>Criado: {{ r.created[:16] if r.created else 'N/A' }}</span>
           {% if r.due %}
-            <span class="due-badge" aria-label="Prazo">📅 {{ r.due.strftime('%d/%m/%Y %H:%M') }}</span>
+            <span class="due-badge" aria-label="Prazo">📅 {{ r.due[:16] }}</span>
           {% endif %}
         </div>
       </div>
