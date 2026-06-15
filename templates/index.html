@@ -1,50 +1,73 @@
 {% extends 'base.html' %}
 {% block content %}
-  <!-- Modal para criar lembrete -->
   <div id="createReminderModal" class="modal" style="display:none">
     <div class="modal-content create-modal">
-      <h3>📝 Criar novo lembrete</h3>
-      <form method="post" action="{{ url_for('add_reminder') }}" aria-label="Adicionar lembrete">
+      <h3>Novo lembrete</h3>
+      <p>Escreva como você fala. O sistema interpreta data e hora quando encontrar.</p>
+      <form method="post" action="{{ url_for('add_reminder') }}" aria-label="Criar lembrete">
         {{ form.hidden_tag() }}
         <div class="form-group">
-          <label class="label">📝 Título do lembrete</label>
-          {{ form.title(class_='large-input', placeholder='Ex: Tomar remédio às 9h, Reunião com cliente...') }}
+          <label class="label" for="reminderTextInput">Lembrete</label>
+          {{ form.reminder_text(
+            id='reminderTextInput',
+            class_='large-input',
+            placeholder='Ex: Reunião com João amanhã às 15h',
+            autocomplete='off'
+          ) }}
+          {% if form.reminder_text.errors %}
+            <div class="error-text" role="alert">{{ form.reminder_text.errors[0] }}</div>
+          {% endif %}
         </div>
-
-        <div class="form-group">
-          <label class="label">📄 Observações (opcional)</label>
-          {{ form.note(class_='large-input', rows=3, placeholder='Informações adicionais: local, pessoas envolvidas, preparativos...') }}
-        </div>
-
-        <div class="form-group">
-          <label class="label">📅 Prazo (opcional)</label>
-          {{ form.due(type='datetime-local', class_='large-input') }}
-        </div>
-
+        <p class="composer-hint">
+          Exemplos: "Pagar conta de luz dia 20", "Consulta médica sexta-feira às 9h", "Ligar para Ana às 18h".
+        </p>
         <div class="modal-actions">
-          {{ form.submit(class_='primary big-btn', value='➕ Criar lembrete') }}
-          <button type="button" class="danger" onclick="closeModal('createReminderModal')">Cancelar</button>
+          {{ form.submit(class_='primary', value='Adicionar lembrete') }}
+          <button class="secondary" type="button" onclick="closeModal('createReminderModal')">Cancelar</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- Modal para confirmação de exclusão -->
   <div id="deleteModal" class="modal" style="display:none">
     <div class="modal-content">
-      <h3>🗑️ Confirmar exclusão</h3>
-      <p>Tem certeza que deseja excluir este lembrete?</p>
+      <h3>Excluir lembrete</h3>
+      <p>Esse lembrete será removido permanentemente.</p>
       <div class="modal-actions">
-        <button class="danger" id="confirmDelete">Sim, excluir</button>
-        <button class="primary" onclick="closeModal('deleteModal')">Cancelar</button>
+        <button class="danger" id="confirmDelete">Excluir</button>
+        <button class="secondary" type="button" onclick="closeModal('deleteModal')">Cancelar</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal para notificações -->
+  <div id="editReminderModal" class="modal" style="display:none">
+    <div class="modal-content create-modal">
+      <h3>Editar lembrete</h3>
+      <p>Atualize o lembrete usando uma única frase. O sistema interpreta data e hora automaticamente.</p>
+      <form id="editReminderForm" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+          <label class="label" for="editReminderInput">Lembrete</label>
+          <input
+            id="editReminderInput"
+            name="reminder_text"
+            class="large-input"
+            maxlength="500"
+            placeholder="Ex: Consulta médica sexta-feira às 9h"
+            required
+          >
+        </div>
+        <div class="modal-actions">
+          <button class="primary" type="submit">Salvar alterações</button>
+          <button class="secondary" type="button" onclick="closeModal('editReminderModal')">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div id="notificationModal" class="modal" style="display:none">
     <div class="modal-content notification-modal">
-      <h3>🔔 Lembrete!</h3>
+      <h3>Próximo lembrete</h3>
       <div id="notificationContent"></div>
       <div class="modal-actions">
         <button class="primary" onclick="closeModal('notificationModal')">Entendi</button>
@@ -52,53 +75,115 @@
     </div>
   </div>
 
-  <!-- Badge de notificações -->
-  <div id="notificationBadge" class="notification-badge" style="display:none">
-    <span id="notificationCount">0</span>
-    <button onclick="showNotifications()">🔔</button>
-  </div>
-
-  <div class="page-header">
-    <h1>🧠 Seus lembretes</h1>
-    <p class="subtitle">Mantenha-se organizado com o Mindly</p>
-  </div>
-
-  <!-- Campo de busca para desktop -->
-  <section class="search-form desktop-only">
-    <form method="get" action="{{ url_for('index') }}" class="row" style="max-width:500px; margin:0 auto 24px">
-      <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="Buscar lembretes..." class="large-input"/>
-      <button class="primary">🔎 Buscar</button>
-    </form>
+  <section class="compose-card" id="reminderComposer">
+    <div class="section-header section-header-compact">
+      <div>
+        <h2>Novo lembrete</h2>
+        <p>Crie lembretes em linguagem natural sem sair da listagem.</p>
+      </div>
+      <button class="primary" type="button" onclick="showModal('createReminderModal')">Novo lembrete</button>
+    </div>
   </section>
 
-  <section class="list">
-    {% for r in reminders %}
-    <div class="reminder {% if r.done %}done{% endif %}" aria-live="polite" data-title="{{ r.title|e }}" data-note="{{ r.note|e if r.note else '' }}" data-due="{{ r.due if r.due else '' }}">
-      <div class="left">
-        <form method="get" action="{{ url_for('toggle_done', id=r.id) }}" aria-label="Marcar como feito">
-          <button class="check big-check" aria-label="Marcar lembrete {{ r.title }} como feito">{% if r.done %}✓{% else %}○{% endif %}</button>
-        </form>
+  <section class="listing-shell">
+    <div class="section-header">
+      <div>
+        <h2>Seus lembretes</h2>
+        <p>{{ pagination.total }} lembrete{{ '' if pagination.total == 1 else 's' }} encontrado{{ '' if pagination.total == 1 else 's' }}</p>
       </div>
-      <div class="body">
-        <div class="title">{{ r.title }}</div>
-        {% if r.note %}<div class="note">{{ r.note }}</div>{% endif %}
-        <div class="meta">
-          <span>Criado: {{ r.created[:16] if r.created else 'N/A' }}</span>
-          {% if r.due %}
-            <span class="due-badge" aria-label="Prazo">📅 {{ r.due[:16] }}</span>
-          {% endif %}
-        </div>
-      </div>
-      <div class="actions">
-        <button class="icon-btn primary" onclick="speakElement(this.closest('.reminder'))" aria-label="Ouvir lembrete {{ r.title }}" title="Ouvir lembrete">🔊</button>
-        <button class="icon-btn danger" onclick="confirmDelete('{{ r.id }}')" aria-label="Excluir lembrete {{ r.title }}" title="Excluir lembrete">🗑️</button>
-      </div>
+      <form method="get" action="{{ url_for('index') }}" class="search-inline">
+        <input type="text" name="q" value="{{ q or '' }}" placeholder="Buscar lembretes">
+        <button class="secondary" type="submit">Buscar</button>
+      </form>
     </div>
-    {% else %}
-      <div class="empty-state">
-        <h3>📝 Nenhum lembrete ainda</h3>
-        <p>Use o formulário acima para criar seu primeiro lembrete e manter sua agenda organizada!</p>
+
+    <section class="list reminder-list">
+      {% for r in reminders %}
+      <article
+        class="reminder reminder-card {% if r.done %}done{% endif %}"
+        data-reminder-text="{{ r.input_text|e }}"
+        data-edit-url="{{ url_for('update_reminder', id=r.id, page=pagination.page, q=q or None) }}"
+      >
+        <div class="reminder-main">
+          <form method="get" action="{{ url_for('toggle_done', id=r.id, page=pagination.page, q=q or None) }}" aria-label="Marcar como concluído">
+            <button class="check big-check" type="submit" aria-label="Alternar status do lembrete">
+              {% if r.done %}✓{% else %}○{% endif %}
+            </button>
+          </form>
+
+          <div class="reminder-content">
+            <div class="reminder-headline">
+              <h3>{{ r.display_text }}</h3>
+              {% if r.due_label %}
+                <span class="due-badge">📅 {{ r.due_label }}</span>
+              {% endif %}
+            </div>
+            <div class="meta">
+              <span>Criado em {{ r.created_label }}</span>
+              {% if r.done %}
+                <span class="status-pill">Concluído</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="actions reminder-actions">
+          <button class="secondary action-button" type="button" onclick="openEditReminder(this.closest('.reminder-card'))">
+            Editar
+          </button>
+          <button class="icon-btn primary" type="button" onclick="speakElement(this.closest('.reminder-card'))" aria-label="Ouvir lembrete">
+            🔊
+          </button>
+          <button
+            class="icon-btn danger"
+            type="button"
+            onclick="confirmDelete('{{ url_for('delete', id=r.id, page=pagination.page, q=q or None) }}')"
+            aria-label="Excluir lembrete"
+          >
+            🗑️
+          </button>
+        </div>
+      </article>
+      {% else %}
+      <div class="empty-state modern-empty-state">
+        <h3>Nenhum lembrete por aqui</h3>
+        <p>Abra o modal e crie o primeiro lembrete em segundos.</p>
+        <button class="primary" type="button" onclick="showModal('createReminderModal')">Criar meu primeiro lembrete</button>
       </div>
-    {% endfor %}
+      {% endfor %}
+    </section>
+
+    {% if pagination.pages > 1 %}
+    <nav class="pagination-nav" aria-label="Paginação de lembretes">
+      <a
+        class="page-link nav-link {% if not pagination.has_prev %}disabled{% endif %}"
+        href="{{ url_for('index', page=pagination.prev_num, q=q or None) if pagination.has_prev else '#' }}"
+      >
+        Anterior
+      </a>
+
+      <div class="page-numbers">
+        {% for page_number in pagination.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
+          {% if page_number %}
+            <a
+              class="page-link {% if page_number == pagination.page %}active{% endif %}"
+              href="{{ url_for('index', page=page_number, q=q or None) }}"
+            >
+              {{ page_number }}
+            </a>
+          {% else %}
+            <span class="page-ellipsis">…</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <a
+        class="page-link nav-link {% if not pagination.has_next %}disabled{% endif %}"
+        href="{{ url_for('index', page=pagination.next_num, q=q or None) if pagination.has_next else '#' }}"
+      >
+        Próxima
+      </a>
+    </nav>
+    {% endif %}
   </section>
 {% endblock %}

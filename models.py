@@ -17,16 +17,26 @@ class Reminder(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     note = db.Column(db.Text, nullable=True)
+    reminder_text = db.Column(db.String(500), nullable=True)
     due = db.Column(db.DateTime, nullable=True)
     created = db.Column(db.DateTime, default=datetime.utcnow)
     done = db.Column(db.Boolean, default=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
 
+    @property
+    def display_text(self):
+        if self.reminder_text:
+            return self.reminder_text
+        if self.note:
+            return f'{self.title} - {self.note}'
+        return self.title
+
     def to_dict(self):
         return {
             'id': self.id,
             'title': self.title,
-            'note': self.note,
+            'reminder_text': self.display_text,
+            'note': None,
             'due': self.due.isoformat() if self.due else None,
             'created': self.created.isoformat(),
             'done': self.done

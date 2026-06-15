@@ -1,14 +1,30 @@
 {% extends 'base.html' %}
 {% block content %}
-  <div class="auth-card" role="region" aria-labelledby="loginTitle">
-    <h2 id="loginTitle">🧠 Entre no Mindly</h2>
-    <form method="post" novalidate>
-      {{ form.hidden_tag() }}
+  <div class="auth-layout">
+    <section class="auth-panel">
+      <span class="hero-eyebrow">Mindly</span>
+      <h1>Entre e continue de onde parou</h1>
+      <p>
+        Um fluxo direto para capturar lembretes rapidamente, com proteção de sessão e acesso
+        às suas listas em qualquer dispositivo autorizado.
+      </p>
+      <div class="auth-highlights">
+        <span>Texto livre</span>
+        <span>10 por página</span>
+        <span>Mais novos primeiro</span>
+      </div>
+    </section>
 
-      {# Email #}
-      <div class="input-group{% if form.email.errors %} has-error{% endif %}">
-        <span class="input-icon" aria-hidden>📧</span>
-        {{ form.email(
+    <div class="auth-card" role="region" aria-labelledby="loginTitle">
+      <h2 id="loginTitle">Entrar</h2>
+      <p class="muted auth-intro">Use seu email e senha. O acesso permanece protegido e o formulário ficou mais direto.</p>
+
+      <form method="post" novalidate>
+        {{ form.hidden_tag() }}
+
+        <div class="input-group{% if form.email.errors %} has-error{% endif %}">
+          <span class="input-icon" aria-hidden>📧</span>
+          {{ form.email(
             class_='input',
             placeholder='Email',
             aria_label='Email',
@@ -16,40 +32,38 @@
             autocomplete='email',
             inputmode='email',
             required=True,
-            aria_describedby='email-error'
-        ) }}
-      </div>
-      {% if form.email.errors %}
-        <div class="error-text" id="email-error" role="alert" aria-live="polite">{{ form.email.errors[0] }}</div>
-      {% endif %}
+            autofocus=True
+          ) }}
+        </div>
+        {% if form.email.errors %}
+          <div class="error-text" role="alert">{{ form.email.errors[0] }}</div>
+        {% endif %}
 
-      {# Senha #}
-      <div class="input-group{% if form.password.errors %} has-error{% endif %}">
-        <span class="input-icon" aria-hidden>🔒</span>
-        {{ form.password(
+        <div class="input-group{% if form.password.errors %} has-error{% endif %}">
+          <span class="input-icon" aria-hidden>🔒</span>
+          {{ form.password(
             class_='input',
             placeholder='Senha',
             aria_label='Senha',
             autocomplete='current-password',
-            required=True,
-            aria_describedby='password-error'
-        ) }}
-        <button type="button" class="input-addon icon-btn" data-toggle="password" data-target="password" aria-label="Mostrar senha" aria-pressed="false" title="Mostrar/ocultar senha">👁️</button>
-      </div>
-      {% if form.password.errors %}
-        <div class="error-text" id="password-error" role="alert" aria-live="polite">{{ form.password.errors[0] }}</div>
-      {% endif %}
+            required=True
+          ) }}
+          <button type="button" class="input-addon icon-btn" data-toggle="password" aria-label="Mostrar senha" aria-pressed="false" title="Mostrar ou ocultar senha">👁️</button>
+        </div>
+        {% if form.password.errors %}
+          <div class="error-text" role="alert">{{ form.password.errors[0] }}</div>
+        {% endif %}
 
-      <div class="form-row small between">
-        <label class="checkbox-inline">{{ form.remember() }} Manter conectado neste dispositivo</label>
-        <a class="muted" href="#">Esqueci a senha</a>
-      </div>
+        <div class="form-row small between">
+          <label class="checkbox-inline">{{ form.remember() }} Continuar conectado neste dispositivo</label>
+        </div>
 
-      <div class="form-actions">
-        {{ form.submit(class_='primary block') }}
-      </div>
-    </form>
+        <div class="form-actions">
+          {{ form.submit(class_='primary block', value='Entrar') }}
+        </div>
+      </form>
 
-    <p class="muted auth-alt">Não tem conta? <a href="{{ url_for('register') }}">Cadastre-se</a></p>
+      <p class="muted auth-alt">Não tem conta? <a href="{{ url_for('register') }}">Criar conta</a></p>
+    </div>
   </div>
 {% endblock %}

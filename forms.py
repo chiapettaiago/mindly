@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField, SubmitField, TextAreaField, DateTimeField
-from wtforms.validators import DataRequired, Email, EqualTo, Length, Optional
+from wtforms import StringField, PasswordField, BooleanField, SubmitField
+from wtforms.validators import DataRequired, Email, EqualTo, Length
 
 class RegisterForm(FlaskForm):
     name = StringField('Nome', validators=[DataRequired(), Length(max=120)])
@@ -16,10 +16,8 @@ class LoginForm(FlaskForm):
     submit = SubmitField('Entrar')
 
 class ReminderForm(FlaskForm):
-    title = StringField('Título', validators=[DataRequired(), Length(max=200)])
-    note = TextAreaField('Observações', validators=[Optional(), Length(max=2000)])
-    due = DateTimeField('Prazo (YYYY-MM-DD HH:MM)', format='%Y-%m-%dT%H:%M', validators=[Optional()])
-    submit = SubmitField('Salvar')
+    reminder_text = StringField('Lembrete', validators=[DataRequired(), Length(max=500)])
+    submit = SubmitField('Salvar lembrete')
 
 class NoteForm(FlaskForm):
     content = StringField('Nota', validators=[DataRequired(), Length(max=500)])

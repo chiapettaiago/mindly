@@ -1,35 +1,64 @@
 {% extends 'base.html' %}
 {% block content %}
-  <div class="auth-card">
-    <h2>🧠 Cadastre-se no Mindly</h2>
-    <form method="post" novalidate>
-      {{ form.hidden_tag() }}
-
-      <div class="input-group">
-        <span class="input-icon" aria-hidden>👤</span>
-        {{ form.name(class_='input', placeholder='Nome') }}
+  <div class="auth-layout">
+    <section class="auth-panel">
+      <span class="hero-eyebrow">Nova conta</span>
+      <h1>Crie seu espaço de lembretes</h1>
+      <p>
+        Cadastro enxuto para começar rápido. Depois disso, basta escrever seus lembretes em uma única frase.
+      </p>
+      <div class="auth-highlights">
+        <span>Cadastro simples</span>
+        <span>Interface responsiva</span>
+        <span>Lembretes naturais</span>
       </div>
+    </section>
 
-      <div class="input-group">
-        <span class="input-icon" aria-hidden>📧</span>
-        {{ form.email(class_='input', placeholder='Email') }}
-      </div>
+    <div class="auth-card">
+      <h2>Criar conta</h2>
+      <p class="muted auth-intro">Preencha os dados abaixo para começar a usar o Mindly.</p>
 
-      <div class="input-group">
-        <span class="input-icon" aria-hidden>🔒</span>
-        {{ form.password(class_='input', placeholder='Senha') }}
-      </div>
+      <form method="post" novalidate>
+        {{ form.hidden_tag() }}
 
-      <div class="input-group">
-        <span class="input-icon" aria-hidden>🔒</span>
-        {{ form.password2(class_='input', placeholder='Repita a senha') }}
-      </div>
+        <div class="input-group{% if form.name.errors %} has-error{% endif %}">
+          <span class="input-icon" aria-hidden>👤</span>
+          {{ form.name(class_='input', placeholder='Seu nome', autocomplete='name', required=True) }}
+        </div>
+        {% if form.name.errors %}
+          <div class="error-text" role="alert">{{ form.name.errors[0] }}</div>
+        {% endif %}
 
-      <div style="margin-top:14px">
-        {{ form.submit(class_='primary block') }}
-      </div>
-    </form>
+        <div class="input-group{% if form.email.errors %} has-error{% endif %}">
+          <span class="input-icon" aria-hidden>📧</span>
+          {{ form.email(class_='input', placeholder='Email', autocomplete='email', inputmode='email', required=True) }}
+        </div>
+        {% if form.email.errors %}
+          <div class="error-text" role="alert">{{ form.email.errors[0] }}</div>
+        {% endif %}
 
-    <p class="muted" style="margin-top:12px">Já tem conta? <a href="{{ url_for('login') }}">Entrar</a></p>
+        <div class="input-group{% if form.password.errors %} has-error{% endif %}">
+          <span class="input-icon" aria-hidden>🔒</span>
+          {{ form.password(class_='input', placeholder='Senha', autocomplete='new-password', required=True) }}
+        </div>
+        {% if form.password.errors %}
+          <div class="error-text" role="alert">{{ form.password.errors[0] }}</div>
+        {% endif %}
+
+        <div class="input-group{% if form.password2.errors %} has-error{% endif %}">
+          <span class="input-icon" aria-hidden>🔐</span>
+          {{ form.password2(class_='input', placeholder='Repita a senha', autocomplete='new-password', required=True) }}
+        </div>
+        {% if form.password2.errors %}
+          <div class="error-text" role="alert">{{ form.password2.errors[0] }}</div>
+        {% endif %}
+
+        <div class="form-actions">
+          {{ form.submit(class_='primary block', value='Criar conta') }}
+        </div>
+      </form>
+
+      <p class="muted auth-alt">Já tem conta? <a href="{{ url_for('login') }}">Entrar</a></p>
+    </div>
   </div>
 {% endblock %}
