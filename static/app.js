@@ -18,6 +18,11 @@ const defaultPreferences = {
 
 let prefs = { ...defaultPreferences };
 
+function isAuthScreen() {
+  const endpoint = document.body.getAttribute('data-endpoint');
+  return endpoint === 'login' || endpoint === 'register';
+}
+
 function loadPreferences() {
   try {
     const raw = localStorage.getItem('userPreferences');
@@ -334,8 +339,15 @@ function playHighSound() {
 }
 
 async function checkNotifications() {
+  if (isAuthScreen()) return;
+
   try {
     const response = await fetch('/api/notifications');
+    const contentType = response.headers.get('content-type') || '';
+    if (!response.ok || !contentType.includes('application/json')) {
+      return;
+    }
+
     const payload = await response.json();
     currentNotifications = payload.notifications || [];
     updateNotificationBadge(payload);
@@ -577,9 +589,11 @@ window.addEventListener('DOMContentLoaded', () => {
     Notification.requestPermission().catch(() => {});
   }
 
-  checkNotifications();
-  clearInterval(notificationInterval);
-  notificationInterval = setInterval(checkNotifications, 30000);
+  if (!isAuthScreen()) {
+    checkNotifications();
+    clearInterval(notificationInterval);
+    notificationInterval = setInterval(checkNotifications, 30000);
+  }
 });
 
 window.addEventListener('resize', handleResize);
