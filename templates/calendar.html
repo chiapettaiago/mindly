@@ -1,0 +1,208 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div id="createReminderModal" class="modal" style="display:none">
+    <div class="modal-content create-modal">
+      <h3>Novo lembrete</h3>
+      <p>Escreva como você fala. O sistema interpreta data e hora quando encontrar.</p>
+      <form method="post" action="{{ url_for('add_reminder', next='calendar', year=current_year, month=current_month) }}" aria-label="Criar lembrete">
+        {{ form.hidden_tag() }}
+        <div class="form-group">
+          <label class="label" for="reminderTextInput">Lembrete</label>
+          {{ form.reminder_text(
+            id='reminderTextInput',
+            class_='large-input',
+            placeholder='Ex: Reunião com João amanhã às 15h',
+            autocomplete='off'
+          ) }}
+        </div>
+        <p class="composer-hint">
+          Exemplos: "Pagar conta de luz dia 20", "Consulta médica sexta-feira às 9h", "Ligar para Ana às 18h".
+        </p>
+        <div class="modal-actions">
+          {{ form.submit(class_='primary', value='Adicionar lembrete') }}
+          <button class="secondary" type="button" onclick="closeModal('createReminderModal')">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="deleteModal" class="modal" style="display:none">
+    <div class="modal-content">
+      <h3>Excluir lembrete</h3>
+      <p>Esse lembrete será removido permanentemente.</p>
+      <div class="modal-actions">
+        <button class="danger" id="confirmDelete">Excluir</button>
+        <button class="secondary" type="button" onclick="closeModal('deleteModal')">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="editReminderModal" class="modal" style="display:none">
+    <div class="modal-content create-modal">
+      <h3>Editar lembrete</h3>
+      <p>Atualize o lembrete usando uma única frase. O sistema interpreta data e hora automaticamente.</p>
+      <form id="editReminderForm" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+          <label class="label" for="editReminderInput">Lembrete</label>
+          <input
+            id="editReminderInput"
+            name="reminder_text"
+            class="large-input"
+            maxlength="500"
+            placeholder="Ex: Consulta médica sexta-feira às 9h"
+            required
+          >
+        </div>
+        <div class="modal-actions">
+          <button class="primary" type="submit">Salvar alterações</button>
+          <button class="secondary" type="button" onclick="closeModal('editReminderModal')">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="notificationModal" class="modal" style="display:none">
+    <div class="modal-content notification-modal">
+      <h3>Próximo lembrete</h3>
+      <div id="notificationContent"></div>
+      <div class="modal-actions">
+        <button class="primary" onclick="closeModal('notificationModal')">Entendi</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="calendarTaskModal" class="modal" style="display:none">
+    <div class="modal-content create-modal calendar-task-modal">
+      <h3 id="calendarTaskModalTitle">Agenda do mês</h3>
+      <p id="calendarTaskModalSubtitle">Lembretes organizados pela data em que você deve lembrar.</p>
+      <div id="calendarTaskModalContent"></div>
+      <div class="modal-actions">
+        <button class="secondary" type="button" onclick="closeModal('calendarTaskModal')">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="calendar-shell">
+    <div class="calendar-toolbar">
+      <div>
+        <span class="calendar-eyebrow">Calendário</span>
+        <h1>{{ month_label }}</h1>
+        <p>{{ scheduled_count }} lembrete{{ '' if scheduled_count == 1 else 's' }} com data neste mês</p>
+      </div>
+      <div class="calendar-actions">
+        <a class="secondary" href="{{ url_for('calendar_view', year=previous_month.year, month=previous_month.month) }}">Anterior</a>
+        <a class="secondary" href="{{ url_for('calendar_view', year=today.year, month=today.month) }}">Hoje</a>
+        <a class="secondary" href="{{ url_for('calendar_view', year=next_month.year, month=next_month.month) }}">Próximo</a>
+        <button class="primary" type="button" onclick="showModal('createReminderModal')">Novo lembrete</button>
+      </div>
+    </div>
+
+    {% if unscheduled_count %}
+      <div class="calendar-note">
+        {{ unscheduled_count }} lembrete{{ '' if unscheduled_count == 1 else 's' }} pendente{{ '' if unscheduled_count == 1 else 's' }} ainda não {{ 'tem' if unscheduled_count == 1 else 'têm' }} data definida.
+      </div>
+    {% endif %}
+
+    <div class="month-grid" aria-label="Calendário do mês">
+      {% for weekday in weekdays %}
+        <div class="weekday">{{ weekday }}</div>
+      {% endfor %}
+
+      {% for week in calendar_weeks %}
+        {% for day in week %}
+          <button
+            type="button"
+            class="calendar-day {% if not day.in_month %}muted-day{% endif %} {% if day.is_today %}today{% endif %} {% if day.count %}has-reminders{% endif %}"
+            {% if day.count %}
+              onclick="openCalendarDayAgenda('{{ day.date.isoformat() }}')"
+            {% else %}
+              disabled
+            {% endif %}
+            aria-label="{{ day.count }} lembrete{{ '' if day.count == 1 else 's' }} em {{ day.date.strftime('%d/%m/%Y') }}"
+          >
+            <span class="day-number">{{ day.day }}</span>
+            {% if day.count %}
+              <span class="day-count">{{ day.count }}</span>
+            {% endif %}
+          </button>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="calendar-agenda-templates" hidden>
+    {% for day in agenda_days %}
+      <section class="agenda-day" id="day-{{ day.anchor }}" data-agenda-label="{{ day.label }}">
+        <div class="agenda-date">
+          <strong>{{ day.label }}</strong>
+          <span>{{ day.reminders|length }} lembrete{{ '' if day.reminders|length == 1 else 's' }}</span>
+        </div>
+
+        <div class="agenda-list">
+          {% for r in day.reminders %}
+            <article
+              class="reminder reminder-card calendar-reminder {% if r.done %}done{% endif %}"
+              data-reminder-text="{{ r.input_text|e }}"
+              data-edit-url="{{ url_for('update_reminder', id=r.id, next='calendar', year=current_year, month=current_month) }}"
+            >
+              <div class="reminder-main">
+                <form method="get" action="{{ url_for('toggle_done', id=r.id, next='calendar', year=current_year, month=current_month) }}" aria-label="Marcar como concluído">
+                  <button class="check big-check" type="submit" aria-label="Alternar status do lembrete">
+                    {% if r.done %}✓{% else %}○{% endif %}
+                  </button>
+                </form>
+
+                <div class="reminder-content">
+                  <div class="reminder-headline">
+                    <h3>{{ r.display_text }}</h3>
+                    {% if r.due_label %}
+                      <span class="due-badge">📅 {{ r.due_label }}</span>
+                    {% endif %}
+                  </div>
+                  <div class="meta">
+                    <span>Criado em {{ r.created_label }}</span>
+                    {% if r.done %}
+                      <span class="status-pill">Concluído</span>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+
+              <div class="actions reminder-actions">
+                <button class="icon-btn secondary" type="button" onclick="openEditReminder(this.closest('.reminder-card'))" aria-label="Editar lembrete" title="Editar lembrete">
+                  ✏️
+                </button>
+                <button class="icon-btn primary" type="button" onclick="speakElement(this.closest('.reminder-card'))" aria-label="Ouvir lembrete">
+                  🔊
+                </button>
+                <button
+                  class="icon-btn danger"
+                  type="button"
+                  onclick="confirmDelete('{{ url_for('delete', id=r.id, next='calendar', year=current_year, month=current_month) }}')"
+                  aria-label="Excluir lembrete"
+                >
+                  🗑️
+                </button>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+    {% else %}
+      <div class="empty-state modern-empty-state calendar-empty-state">
+        <h3>Nenhum lembrete com data neste mês</h3>
+        <p>Crie um lembrete com dia e horário para ele aparecer no calendário.</p>
+        <button class="primary" type="button" onclick="showModal('createReminderModal')">Criar lembrete com data</button>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if not agenda_days %}
+    <div class="empty-state modern-empty-state calendar-empty-state">
+      <h3>Nenhum lembrete com data neste mês</h3>
+      <p>Crie um lembrete com dia e horário para ele aparecer no calendário.</p>
+      <button class="primary" type="button" onclick="showModal('createReminderModal')">Criar lembrete com data</button>
+    </div>
+  {% endif %}
+{% endblock %}

@@ -1,4 +1,4 @@
-#!/var/www/projects/public/mindly/venv/bin/python3
+#!/srv/compartilhada/Iago/projects/mindly/venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys

@@ -1,6 +1,7 @@
 import os
 import secrets
 import time
+import calendar as calendar_module
 from datetime import datetime, timedelta
 
 import pymysql
@@ -284,6 +285,14 @@ def build_index_redirect():
     return redirect(url_for('index', page=page if page and page > 1 else None, q=query or None))
 
 
+def build_reminder_redirect():
+    if request.args.get('next') == 'calendar':
+        year = request.args.get('year', type=int)
+        month = request.args.get('month', type=int)
+        return redirect(url_for('calendar_view', year=year, month=month))
+    return build_index_redirect()
+
+
 def first_form_error(form):
     for errors in form.errors.values():
         if errors:
@@ -347,6 +356,97 @@ def index():
         pagination=pagination,
         q=query_text,
         stats=stats,
+    )
+
+
+@app.route('/calendar')
+@login_required
+def calendar_view():
+    form = ReminderForm()
+    today = datetime.now().date()
+    requested_year = request.args.get('year', type=int, default=today.year)
+    requested_month = request.args.get('month', type=int, default=today.month)
+
+    if not 1 <= requested_month <= 12:
+        requested_year = today.year
+        requested_month = today.month
+
+    month_start = datetime(requested_year, requested_month, 1)
+    if requested_month == 12:
+        next_month_start = datetime(requested_year + 1, 1, 1)
+    else:
+        next_month_start = datetime(requested_year, requested_month + 1, 1)
+    month_end = next_month_start - timedelta(days=1)
+
+    scheduled_reminders = (
+        reminder_query_for_user(current_user.id)
+        .filter(
+            Reminder.due.isnot(None),
+            Reminder.due >= month_start,
+            Reminder.due < next_month_start,
+        )
+        .order_by(Reminder.due.asc(), Reminder.id.asc())
+        .all()
+    )
+
+    reminders_by_date = {}
+    for reminder in scheduled_reminders:
+        reminder_date = reminder.due.date()
+        reminders_by_date.setdefault(reminder_date, []).append(serialize_reminder(reminder))
+
+    calendar_weeks = []
+    calendar = calendar_module.Calendar(firstweekday=6)
+    for week in calendar.monthdatescalendar(requested_year, requested_month):
+        calendar_weeks.append(
+            [
+                {
+                    'date': day,
+                    'day': day.day,
+                    'in_month': day.month == requested_month,
+                    'is_today': day == today,
+                    'count': len(reminders_by_date.get(day, [])),
+                }
+                for day in week
+            ]
+        )
+
+    agenda_days = [
+        {
+            'date': day,
+            'anchor': day.isoformat(),
+            'label': day.strftime('%d/%m/%Y'),
+            'weekday': day.strftime('%A'),
+            'reminders': reminders,
+        }
+        for day, reminders in sorted(reminders_by_date.items())
+    ]
+
+    previous_month = month_start - timedelta(days=1)
+    next_month = next_month_start
+    unscheduled_count = (
+        Reminder.query.filter(
+            Reminder.user_id == current_user.id,
+            Reminder.due.is_(None),
+            Reminder.done.is_(False),
+        ).count()
+    )
+
+    return render_template(
+        'calendar.html',
+        form=form,
+        calendar_weeks=calendar_weeks,
+        agenda_days=agenda_days,
+        month_label=month_start.strftime('%m/%Y'),
+        month_start=month_start,
+        month_end=month_end,
+        current_year=requested_year,
+        current_month=requested_month,
+        previous_month={'year': previous_month.year, 'month': previous_month.month},
+        next_month={'year': next_month.year, 'month': next_month.month},
+        today={'year': today.year, 'month': today.month},
+        weekdays=['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
+        scheduled_count=len(scheduled_reminders),
+        unscheduled_count=unscheduled_count,
     )
 
 
@@ -428,7 +528,7 @@ def add_reminder():
         flash('Lembrete criado.', 'success')
     else:
         flash(first_form_error(form), 'danger')
-    return redirect(url_for('index'))
+    return build_reminder_redirect()
 
 
 @app.route('/update/<int:id>', methods=['POST'])
@@ -450,7 +550,7 @@ def update_reminder(id):
     db.session.commit()
     invalidate_user_cache(current_user.id)
     flash('Lembrete atualizado.', 'success')
-    return build_index_redirect()
+    return build_reminder_redirect()
 
 
 @app.route('/toggle/<int:id>')
@@ -463,7 +563,7 @@ def toggle_done(id):
     reminder.done = not reminder.done
     db.session.commit()
     invalidate_user_cache(current_user.id)
-    return build_index_redirect()
+    return build_reminder_redirect()
 
 
 @app.route('/delete/<int:id>', methods=['POST'])
@@ -477,7 +577,7 @@ def delete(id):
     db.session.commit()
     invalidate_user_cache(current_user.id)
     flash('Lembrete removido.', 'info')
-    return build_index_redirect()
+    return build_reminder_redirect()
 
 
 @app.route('/api/reminders')
@@ -576,6 +676,7 @@ def add_no_cache_headers(response):
         path = request.path or ''
         if (
             path in ('/', '/login', '/register', '/notes')
+            or path == '/calendar'
             or path.startswith('/api/')
             or path.startswith('/delete/')
             or path.startswith('/toggle/')
@@ -593,4 +694,4 @@ def add_no_cache_headers(response):
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=6000)

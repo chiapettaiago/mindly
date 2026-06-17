@@ -22,7 +22,7 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="/static/style.css?v=cleanup5">
+  <link rel="stylesheet" href="/static/style.css?v=calendar-modal2">
   <link rel="manifest" href="/static/manifest.webmanifest">
   <meta name="theme-color" content="#2563eb">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -51,6 +51,10 @@
           <span class="nav-icon">🏠</span>
           <span class="nav-text">Lembretes</span>
         </a>
+        <a href="{{ url_for('calendar_view') }}" class="nav-item {{ 'active' if request.endpoint == 'calendar_view' else '' }}">
+          <span class="nav-icon">📅</span>
+          <span class="nav-text">Calendário</span>
+        </a>
         <a href="#" class="nav-item nav-subitem" onclick="goToCreate('reminder')">
           <span class="nav-icon">➕</span>
           <span class="nav-text">Novo lembrete</span>
@@ -74,6 +78,10 @@
       <a href="{{ url_for('index') }}" class="bottom-nav-item {{ 'active' if request.endpoint == 'index' else '' }}">
         <span class="bottom-nav-icon">🏠</span>
         <span class="bottom-nav-text">Lembretes</span>
+      </a>
+      <a href="{{ url_for('calendar_view') }}" class="bottom-nav-item {{ 'active' if request.endpoint == 'calendar_view' else '' }}">
+        <span class="bottom-nav-icon">📅</span>
+        <span class="bottom-nav-text">Calendário</span>
       </a>
       <a href="#" class="bottom-nav-item" onclick="goToCreate('reminder')">
         <span class="bottom-nav-icon create-icon">➕</span>
@@ -197,6 +205,6 @@
       document.documentElement.setAttribute('data-app-version', '{{ app_version }}');
       document.documentElement.setAttribute('data-app-manufacturer', '{{ app_manufacturer }}');
     </script>
-    <script src="/static/app.js?v=cleanup5"></script>
+    <script src="/static/app.js?v=calendar-modal2"></script>
   </body>
 </html>

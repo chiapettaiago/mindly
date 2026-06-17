@@ -1,8 +1,8 @@
 /* Service Worker para Mindly - cache apenas de assets estáticos */
-const CACHE_NAME = 'mindly-static-v7';
+const CACHE_NAME = 'mindly-static-v8';
 const PRECACHE = [
-  '/static/style.css?v=cleanup5',
-  '/static/app.js?v=cleanup5',
+  '/static/style.css?v=calendar-modal2',
+  '/static/app.js?v=calendar-modal2',
   '/static/manifest.webmanifest',
   '/static/icons/icon-192.svg',
   '/static/icons/icon-512.svg'

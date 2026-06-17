@@ -262,6 +262,23 @@ function openEditReminder(card) {
   setTimeout(() => input.focus(), 50);
 }
 
+function openCalendarDayAgenda(dayAnchor) {
+  const source = document.getElementById(`day-${dayAnchor}`);
+  const content = document.getElementById('calendarTaskModalContent');
+  const title = document.getElementById('calendarTaskModalTitle');
+  const subtitle = document.getElementById('calendarTaskModalSubtitle');
+  if (!source || !content) return;
+
+  const clone = source.cloneNode(true);
+  clone.removeAttribute('id');
+  clone.classList.add('modal-agenda-day');
+
+  content.replaceChildren(clone);
+  if (title) title.textContent = source.dataset.agendaLabel || 'Agenda do mês';
+  if (subtitle) subtitle.textContent = 'Lembretes organizados pela data em que você deve lembrar.';
+  showModal('calendarTaskModal');
+}
+
 function updateNotificationBadge(payload) {
   void payload;
 }
@@ -419,7 +436,7 @@ function goToCreate(kind) {
   if (kind !== 'reminder') return;
 
   const endpoint = document.body.getAttribute('data-endpoint');
-  if (endpoint === 'index') {
+  if (endpoint === 'index' || endpoint === 'calendar_view') {
     focusReminderComposer();
     return;
   }
@@ -543,7 +560,7 @@ function initFlashes() {
 
 function initPwa() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js?v=cleanup5').catch(() => {});
+    navigator.serviceWorker.register('/sw.js?v=calendar-modal2').catch(() => {});
   }
 
   const standalone = checkStandalone();
